@@ -1,0 +1,19 @@
+; Godot 4.4 project
+config_version=5
+[application]
+config/name="Pulse Four"
+run/main_scene="res://game/main.tscn"
+config/features=PackedStringArray("4.4", "GL Compatibility")
+config/description="Four lanes. One keyboard. Your part in the song."
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=800
+window/size/window_width_override=1280
+window/size/window_height_override=800
+window/stretch/mode="canvas_items"
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.035,0.045,0.08,1)
+[audio]
+driver/output_latency=15

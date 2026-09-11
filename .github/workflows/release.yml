@@ -1,0 +1,56 @@
+name: Build Windows release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Validate release version
+        shell: pwsh
+        run: |
+          $Version = (Get-Content VERSION -Raw).Trim()
+          if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid VERSION' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$Version") { throw 'Tag must match VERSION' }
+      - name: Build and verify game, importer and lobby
+        shell: pwsh
+        run: ./BUILD-WINDOWS.ps1 -Python python
+      - name: Build launcher and update payload
+        shell: pwsh
+        run: |
+          $Python = 'build/venv/Scripts/python.exe'
+          & $Python -m PyInstaller --noconfirm --onefile --windowed --name PulseFour-Launcher --paths launcher --distpath dist/launcher launcher/main.py
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher build failed' }
+          & $Python scripts/package_release.py
+          if ($LASTEXITCODE -ne 0) { throw 'Update packaging failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PulseFour-Windows
+          compression-level: 0
+          path: |
+            dist/launcher/PulseFour-Launcher.exe
+            dist/PulseFour-update.zip
+      - name: Publish complete release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $Version = (Get-Content VERSION -Raw).Trim()
+          gh release create "v$Version" --target $env:GITHUB_SHA --draft --title "Pulse Four $Version" --notes 'Download PulseFour-Launcher.exe and open it. It installs the game and checks for updates on every launch.' dist/launcher/PulseFour-Launcher.exe dist/PulseFour-update.zip
+          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed; existing releases are never overwritten' }
+          gh release edit "v$Version" --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

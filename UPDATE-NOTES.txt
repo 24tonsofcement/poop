@@ -1,0 +1,17 @@
+PULSE FOUR - STABLE MULTIPLAYER + VISUALS
+
+Restored the last working manual multiplayer patch (protocol pulse-online-1).
+Removed the newer in-lobby host song switching and automatic LAN discovery
+changes that caused multiplayer smoke-test failures. Manual LAN/internet lobby
+connection, host pack download, and normal Ready/Start remain.
+
+Preserved visual and audio work: smooth song carousel, search, preview pause,
+YouTube covers, audio mixer, hit/miss sounds, effect toggles, lane colors, and
+song-reactive side spectrum visualizers with optional bass glow.
+
+Install by closing the game/server, extracting ALL files over the existing
+PulseFour project, replacing matching files, then running UPDATE-GAME.cmd.
+This is source code; the updater builds the Windows executables.
+
+Validation: 50 Python tests and GDScript syntax checks passed. Godot/Windows
+runtime checks were unavailable here and run through the updater on Windows.

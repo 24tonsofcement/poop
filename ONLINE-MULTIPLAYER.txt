@@ -1,0 +1,104 @@
+MANUAL CONNECTIONS
+
+Automatic LAN discovery is removed. Enter the host/server URL manually.
+Named/password lobbies and host song/chart/video downloads remain.
+The host can select a new song using Change song while in the lobby; everyone
+becomes unready and guests download the replacement before readying again.
+Use the same updated game/server on every PC (protocol pulse-online-2).
+Stop any previous standalone server before starting the updated executable.
+
+PULSE FOUR - LAN AND INTERNET MULTIPLAYER
+
+WHAT IS INCLUDED
+Up to four PCs per named, password-protected lobby, one player per PC using
+that machine's P1 keys. Each player chooses an instrument and difficulty.
+The host starts a shared countdown; each machine judges inputs against its own
+audio clock. Live scores are shown beside the highway and in the lobby.
+Local shared-keyboard play for one to four players is still available separately.
+
+The updater builds PulseLobby.exe alongside PulseFour.exe. No separate Python
+installation is needed to run that compiled server. All PCs need this update.
+Internet play requires a reachable server: no public hosted service, automatic
+router configuration, global matchmaking or account system is bundled.
+
+LAN HOST
+1. Choose the song on the main screen, then Multiplayer / LAN & Internet.
+2. Select LAN and leave Start a LAN server on this PC enabled.
+3. Enter a lobby name and password, then Create lobby.
+4. Allow the lobby server through Windows Firewall for your LAN if prompted.
+5. Give friends the LAN server address shown in the lobby, its name and password.
+   Use your actual network adapter's address if several addresses are listed.
+
+LAN GUEST
+1. Open Multiplayer. You can have any song selected before joining.
+2. Enter the host address, such as http://192.168.1.20:27440.
+3. Enter the same lobby name and password, then Join lobby.
+4. If needed, click Download host's song + chart + video. Wait for verification.
+5. Choose your instrument and difficulty, then Ready.
+6. The host clicks Start round once at least two players are ready.
+
+HOST SONG DOWNLOADS
+Creating a lobby automatically uploads the selected audio, charts and any local
+background.ogv video to the lobby server. Guests explicitly click the download
+button. A pack without video still works. Each file has a SHA-256 checksum;
+the game also verifies the audio/chart fingerprint against the host before
+allowing Ready. Failed or cancelled downloads are not installed as songs.
+Downloaded packs remain in your local song library for later use.
+Use Share / retry song upload if sharing was interrupted.
+
+A raw copy of the demo audio is included in shared-demo/audio.wav so the built-in
+demo can be shared from the exported game too. Keep the entire release folder.
+
+INTERNET PLAY
+Use the Internet option and enter the reachable lobby server URL.
+There are two hosting approaches:
+- Run PulseLobby.exe on a publicly reachable Windows server, or run
+  python3 server/lobby_server.py --bind 0.0.0.0 --port 27440
+  on a server with Python 3.11+.
+- Run it on the host PC and forward TCP port 27440 through the router to that
+  PC's LAN address, with the corresponding firewall rule. Friends connect to
+  http://YOUR-PUBLIC-IP:27440. Router configuration varies; CGNAT may prevent
+  inbound connections and require a public server instead.
+
+For encrypted internet connections, use an HTTPS reverse proxy or provide a
+valid certificate and key to the standalone server:
+  PulseLobby.exe --port 27440 --cert fullchain.pem --key privkey.pem
+Friends then use https://YOUR-CERTIFICATE-HOSTNAME:27440.
+The certificate must be trusted and match the hostname. HTTP has no transport
+encryption; use a lobby-only password there. The server stores password hashes
+in memory, does not expose passwords to other players, and does not log bodies.
+
+When using an already-running server, leave Start a LAN server on this PC off
+and create/join named lobbies on its URL. One server can host multiple lobbies.
+If the game started the local server, closing that game also stops its server.
+Run PulseLobby.exe separately if you want it to stay up independently.
+
+DURING A ROUND
+The countdown lasts six seconds to give clients time to receive the start.
+Hit judgement is local; network latency does not change your input windows.
+Audio clocks are aligned at the start, not continually forced onto network
+packets. Device drift and video frame-perfect synchronization are not promised.
+There is no local pause/restart during a network round. Esc leaves the round.
+A player leaving during a round returns the remaining group to the lobby;
+the host leaving closes the lobby. The host can also return everyone to the
+lobby explicitly. Results stay visible until the next round.
+Scores are client-reported for friendly play, not an anti-cheat ranked service.
+Personal bests are still saved locally using the existing chart/scoring rules.
+
+LIMITS
+Four PCs per lobby. File limits: audio/video 256 MiB each, chart metadata 32 MiB.
+The server keeps up to 2 GiB of temporary shared files across its lobbies.
+Shared server files are removed when the host leaves or its session expires.
+Creating a lobby uploads the host pack to the server. Guests receive files only
+after choosing Download. Only audio.wav, song.json and background.ogv transfer.
+
+TESTING
+The updater runs two Godot clients against the compiled lobby server and checks
+joining, host pack/video upload/download, matching, readiness, scheduled starts,
+live scores and leaving. These runtime tests execute on your PC; they have not
+been run in the authoring environment. The Python backend was tested locally,
+including real HTTP control requests and authenticated binary downloads.
+A real connection between separate PCs or through an internet router has not
+been verified in the authoring environment.
+
+Reference: https://docs.godotengine.org/en/4.4/classes/class_httprequest.html
