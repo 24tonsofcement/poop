@@ -1171,7 +1171,7 @@ func award_hold_bars(p: int, n: Dictionary, now: float) -> void:
 	var previous: int = int(n.get("hold_ticks", 0))
 	if earned > previous:
 		n["hold_ticks"] = earned
-		Hype.refresh(r, now)
+		Hype.refresh(r, chart_time())
 		var awarded: int = int(round((earned - previous) * 300 * int(r.multiplier) * hype_multiplier(r)))
 		r.score += awarded
 		r.message = "HOLD  +%d" % awarded
