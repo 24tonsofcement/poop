@@ -21,6 +21,28 @@ func run_checks() -> void:
 	play.mouse_exited.emit()
 	await create_timer(0.22).timeout
 	check(play.scale.is_equal_approx(Vector2.ONE), "Mouse exit restores original scale")
+	# Regression: rear-card overlays must never draw over the front jacket.
+	var original_songs: Array = scene.songs.duplicate(true)
+	for index in range(4):
+		var extra: Dictionary = scene.selected.duplicate(true)
+		extra.id = "stack-regression-" + str(index)
+		scene.songs.append(extra)
+	scene.show_menu()
+	await create_timer(0.5).timeout
+	for step in range(3):
+		scene.move_song(1)
+		await create_timer(0.5).timeout
+		var carousel = scene.ui.find_child("SongCarousel", true, false)
+		var cards: Array = carousel.get_children().filter(func(card): return card.has_meta("offset") and not card.get_meta("exiting", false))
+		for rear in cards:
+			check(is_equal_approx(rear.modulate.a, 1.0), "Settled song jackets are opaque")
+			for front in cards:
+				if absi(int(rear.get_meta("offset"))) > absi(int(front.get_meta("offset"))):
+					check(rear.z_index + rear.ornament.z_index < front.z_index, "Rear border stays behind the complete front card")
+	scene.songs = original_songs
+	scene.selected = original_songs[0]
+	scene.show_menu()
+	await create_timer(0.5).timeout
 	scene.show_settings()
 	var categories = scene.ui.find_child("SettingsCategories", true, false) as TabContainer
 	check(categories != null and categories.get_tab_count() == 7, "Settings has seven focused categories")

@@ -1,7 +1,8 @@
 extends Control
 
-const COLORS = [Color("24edff"), Color("ff48bb"), Color("ffe354"), Color("96ff47")]
-const LANE_COLORS = [Color("24edff"), Color("ff48bb"), Color("ffe354"), Color("96ff47")]
+const GraphicSkin = preload("res://game/graphic_skin.gd")
+const COLORS = [Color("64bbff"), Color("ff745f"), Color("ffda56"), Color("79dfaa")]
+const LANE_COLORS = [Color("64bbff"), Color("ff745f"), Color("ffda56"), Color("79dfaa")]
 const WHITE = Color("f3f6ff")
 const MUTED = Color("abb4e0")
 const WINDOW = 0.160
@@ -163,81 +164,15 @@ func _ready() -> void:
 			toggle_pause())
 
 func apply_theme() -> void:
-	var t = Theme.new()
-	t.default_font_size = 18
-	for control_name in ["Button", "OptionButton", "LineEdit", "SpinBox", "ItemList"]:
-		for state in ["normal", "hover", "pressed", "focus"]:
-			var box = StyleBoxFlat.new()
-			box.bg_color = Color("25456a") if state == "hover" else Color("121d38")
-			box.border_color = COLORS[1] if state == "hover" else COLORS[0] if state == "focus" else Color("33445e")
-			box.set_border_width_all(1)
-			box.border_width_left = 3
-			box.shadow_color = Color(0.02, 0.01, 0.12, 0.6)
-			box.shadow_size = 8
-			box.shadow_offset = Vector2(0, 3)
-			box.set_corner_radius_all(3)
-			box.corner_radius_bottom_right = 16
-			box.content_margin_left = 14
-			box.content_margin_right = 14
-			box.content_margin_top = 10
-			box.content_margin_bottom = 10
-			t.set_stylebox(state, control_name, box)
-		t.set_color("font_color", control_name, WHITE)
-		t.set_color("font_hover_color", control_name, Color("ffffff"))
-		t.set_color("font_outline_color", control_name, Color("090a23"))
-		t.set_constant("outline_size", control_name, 0)
-	t.set_color("font_color", "Label", WHITE)
-	for control_name in ["HSlider", "VSlider", "ProgressBar", "HScrollBar", "VScrollBar"]:
-		var track = StyleBoxFlat.new()
-		track.bg_color = Color("121b37")
-		track.border_color = Color("52658c")
-		track.set_border_width_all(1)
-		track.set_content_margin_all(4)
-		var fill = StyleBoxFlat.new()
-		fill.bg_color = COLORS[0]
-		fill.set_corner_radius_all(3)
-		t.set_stylebox("slider", control_name, track)
-		t.set_stylebox("background", control_name, track)
-		t.set_stylebox("fill", control_name, fill)
-		t.set_stylebox("grabber_area", control_name, fill)
-		t.set_stylebox("grabber_area_highlight", control_name, fill)
-	t.set_color("font_outline_color", "Label", Color("0a0823"))
-	t.set_constant("outline_size", "Label", 2)
-	var popup = StyleBoxFlat.new()
-	popup.bg_color = Color("111a38")
-	popup.border_color = COLORS[0]
-	popup.set_border_width_all(1)
-	popup.set_corner_radius_all(4)
-	popup.shadow_size = 12
-	popup.shadow_color = Color(0, 0, 0, 0.35)
-	popup.set_content_margin_all(8)
-	t.set_stylebox("panel", "PopupMenu", popup)
-	var band_panel = popup.duplicate() as StyleBoxFlat
-	band_panel.bg_color = Color("10172f")
-	band_panel.border_color = Color("40618c")
-	band_panel.border_width_top = 3
-	band_panel.corner_radius_bottom_right = 28
-	band_panel.set_content_margin_all(20)
-	t.set_stylebox("panel", "PanelContainer", band_panel)
-	t.set_stylebox("panel", "TabContainer", band_panel)
-	for state in ["tab_selected", "tab_unselected", "tab_hovered"]:
-		var tab = StyleBoxFlat.new()
-		tab.bg_color = Color("25456a") if state == "tab_selected" else Color("111a30")
-		tab.border_color = COLORS[0] if state == "tab_selected" else Color("334565")
-		tab.border_width_top = 3 if state == "tab_selected" else 1
-		tab.set_content_margin_all(14)
-		t.set_stylebox(state, "TabContainer", tab)
-	t.set_font_size("font_size", "TabContainer", 16)
-	var selected_box = StyleBoxFlat.new()
-	selected_box.bg_color = Color("522756")
-	selected_box.border_color = COLORS[1]
-	selected_box.set_border_width_all(1)
-	t.set_stylebox("hover", "PopupMenu", selected_box)
-	t.set_stylebox("selected", "ItemList", selected_box)
-	t.set_stylebox("selected_focus", "ItemList", selected_box)
-	t.set_color("font_color", "PopupMenu", WHITE)
-	t.set_color("font_hover_color", "PopupMenu", WHITE)
-	theme = t
+	theme = GraphicSkin.make_theme()
+
+func menu_ink(color: Color) -> Color:
+	if color == WHITE: return GraphicSkin.INK
+	if color == MUTED: return GraphicSkin.QUIET
+	if color == Color("fa7f96"): return GraphicSkin.RED
+	for index in range(COLORS.size()):
+		if color == COLORS[index]: return [GraphicSkin.BLUE, GraphicSkin.RED, GraphicSkin.OCHRE, GraphicSkin.GREEN][index]
+	return color
 
 func load_settings() -> void:
 	if FileAccess.file_exists("user://last-timing.json"):
@@ -374,11 +309,9 @@ func label_into(parent: Node, text: String, size_px: int = 18, color: Color = WH
 	var l = Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", size_px)
-	if size_px >= 28:
-		l.add_theme_color_override("font_shadow_color", Color("742a80"))
-		l.add_theme_constant_override("shadow_offset_x", 1)
-		l.add_theme_constant_override("shadow_offset_y", 2)
-	l.add_theme_color_override("font_color", color)
+	if size_px >= 24:
+		l.add_theme_font_override("font", GraphicSkin.font(true))
+	l.add_theme_color_override("font_color", menu_ink(color))
 	parent.add_child(l)
 	return l
 
@@ -475,8 +408,8 @@ func show_menu() -> void:
 	multiplayer_menu.disabled = selected.is_empty() or worker_pid > 0
 	button_into(header, "Settings", show_settings)
 	var masthead = box_into(root, true)
-	label_into(masthead, "01 / SELECT MUSIC", 34, WHITE)
-	var subtitle = label_into(masthead, "PULSE FOUR   /   RHYTHM CONNECTED", 13, COLORS[0])
+	label_into(masthead, "SELECT MUSIC.", 42, WHITE)
+	var subtitle = label_into(masthead, "RECORD SELECT   /   VOL. 04", 13, COLORS[0])
 	subtitle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	var board = box_into(root)
@@ -509,7 +442,7 @@ func show_menu() -> void:
 	root.add_child(panel)
 	var setup = box_into(panel)
 	var count_row = box_into(setup, true)
-	label_into(count_row, "02 / YOUR BAND", 20, COLORS[1])
+	label_into(count_row, "PLAYER SETUP /", 20, COLORS[1])
 	label_into(count_row, "Players", 16)
 	var count = OptionButton.new()
 	count.name = "PlayerCount"
@@ -633,7 +566,7 @@ func build_carousel(carousel: Control) -> void:
 			if absi(previous_offset - int(offset)) <= 2:
 				old_cards.erase(str(song.id))
 				existing.set_meta("offset", int(offset))
-				existing.z_index = 3 - absi(int(offset))
+				existing.z_index = (3 - absi(int(offset))) * 10
 				existing.get_node("Caption").add_theme_font_size_override("font_size", 16 if offset == 0 else 13)
 				carousel.move_child(existing, -1)
 				continue
@@ -642,7 +575,7 @@ func build_carousel(carousel: Control) -> void:
 		card.set_meta("entering", true)
 		card.set_meta("offset", int(offset))
 		card.set_meta("song", song)
-		card.z_index = 3 - absi(int(offset))
+		card.z_index = (3 - absi(int(offset))) * 10
 		card.clip_contents = true
 		card.tooltip_text = str(song.title) + " / " + str(song.artist)
 		card.pressed.connect(func(): move_song(int(card.get_meta("offset"))))
@@ -718,7 +651,8 @@ func layout_carousel(carousel: Control, animate: bool = false) -> void:
 		var factor: float = 1.0 - 0.18 * absi(offset)
 		var target_size: Vector2 = Vector2(300, 220) * factor
 		var target: Vector2 = Vector2(center + offset * spacing - target_size.x / 2, (220 - target_size.y) / 2)
-		var tint: Color = Color(1, 1, 1, 1.0 - 0.2 * absi(offset))
+		var shade: float = 1.0 - 0.09 * absi(offset)
+		var tint: Color = Color(shade, shade, shade, 1.0)
 		stop_card_tween(card)
 		if animate and carousel_direction != 0 and not reduced_motion:
 			if card.get_meta("entering", false):
@@ -857,7 +791,7 @@ func show_settings() -> void:
 	ui.add_child(margin)
 	var root = box_into(margin)
 	var heading = box_into(root, true)
-	var title = label_into(heading, "SYSTEM / SETTINGS", 32, COLORS[0])
+	var title = label_into(heading, "CONTROL ROOM.", 36, COLORS[0])
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button_into(heading, "Back to songs", show_menu)
 	var tabs = TabContainer.new()
@@ -1611,12 +1545,11 @@ func draw_note_sprite(center: Vector2, width: float, tint: Color) -> void:
 	var height: float = body_width * 0.38
 	draw_rect(Rect2(center - Vector2(body_width * 0.53, height * 0.6), Vector2(body_width * 1.06, height * 1.2)), Color(tint, tint.a * 0.12))
 	if note_style == "Bar":
-		var bevel: float = minf(6.0, body_width * 0.12)
 		var origin: Vector2 = center - Vector2(body_width, height) / 2
-		var shape = PackedVector2Array([origin + Vector2(bevel, 0), origin + Vector2(body_width, 0), origin + Vector2(body_width, height - bevel), origin + Vector2(body_width - bevel, height), origin + Vector2(0, height), origin + Vector2(0, bevel)])
-		draw_colored_polygon(shape, tint)
-		draw_line(origin + Vector2(2, height - 2), origin + Vector2(body_width - bevel, height - 2), Color(tint.darkened(0.5), tint.a), maxf(1, height * 0.2))
-		draw_rect(Rect2(center - Vector2(body_width / 2 - 2, height / 2 - 2), Vector2(maxf(1, body_width - 4), maxf(2, height * 0.15))), Color(WHITE, tint.a * 0.55))
+		draw_rect(Rect2(origin + Vector2(0, 3), Vector2(body_width, height)), Color("0a1011"))
+		draw_rect(Rect2(origin, Vector2(body_width, height)), tint)
+		draw_rect(Rect2(origin + Vector2(3, 3), Vector2(maxf(1, body_width - 6), maxf(1, height - 6))), Color("303938"), false, 1.5)
+		draw_rect(Rect2(center - Vector2(body_width * 0.09, height * 0.2), Vector2(body_width * 0.18, height * 0.4)), Color(WHITE, tint.a))
 	else:
 		var ink_width: float = 52.0 if note_style == "Square" else 54.0
 		var side: float = body_width * 64.0 / ink_width
@@ -1721,7 +1654,7 @@ func _draw() -> void:
 		var acc: float = 100.0 * float(r.raw_score) / maxf(300, float(r.judged) * 300) if r.judged > 0 else 100.0
 		text_at(Vector2(x, 127), "%s · %.1f%%" % [choices[p].difficulty, acc], 15, MUTED, track_w)
 		text_at(Vector2(x, 153), "%06d   %d streak   %d×" % [r.score, r.combo, r.multiplier], 17 if players_count >= 3 else 21, WHITE)
-		road_quad(x, track_w, top, hit, 0, 4, top, hit + 12, Color(Color("090d29"), highway_opacity))
+		road_quad(x, track_w, top, hit, 0, 4, top, hit + 12, Color(Color("171b1c"), highway_opacity))
 		draw_hype(r, x, track_w, top, hit, COLORS[p])
 		if visual_effects.combo_glow and r.multiplier > 1:
 			road_quad(x, track_w, top, hit, 0, 4, top, hit, Color(COLORS[p], highway_opacity * 0.025 * (int(r.multiplier) - 1)))
@@ -2143,31 +2076,31 @@ func install_online_pack(folder: String) -> void:
 func draw_arcade_backdrop() -> void:
 	var w: float = size.x
 	var h: float = size.y
-	if not is_instance_valid(background_video) or not background_video.visible:
-		for band in range(24):
-			var amount: float = float(band) / 23.0
-			var color: Color = Color("171a34").lerp(Color("080f20"), amount)
-			draw_rect(Rect2(0, h * band / 24.0, w, h / 24.0 + 1), color)
-	if screen != "game":
-		var center = Vector2(w * 0.5, h * 0.36)
-		for ring in range(5):
-			var angle: float = ui_clock * (0.08 if ring % 2 == 0 else -0.06) + ring
-			draw_arc(center, 150 + ring * 66, angle, angle + 4.5, 100, Color(COLORS[ring % 4], 0.045), 2 if ring % 2 else 12, true)
-		for stripe in range(12):
-			var x: float = fposmod(stripe * 150.0 + ui_clock * 12, w + h) - h
-			draw_line(Vector2(x, h), Vector2(x + h, 0), Color(COLORS[stripe % 4], 0.04), 18)
-		for dot in range(30):
-			var at = Vector2(fposmod(dot * 137.0, w), fposmod(dot * 89.0 - ui_clock * 9, h))
-			draw_rect(Rect2(at, Vector2(3, 3)), Color(COLORS[dot % 4], 0.22))
-	for lane in range(4):
-		draw_rect(Rect2(w * lane / 4.0, 0, w / 4.0 + 1, 4), LANE_COLORS[lane])
-		draw_rect(Rect2(w * lane / 4.0, h - 5, w / 4.0 + 1, 5), Color(LANE_COLORS[lane], 0.65))
 	if screen == "game":
-		draw_rect(Rect2(16, 12, w - 32, 55), Color("101632"))
-		draw_line(Vector2(16, 12), Vector2(w - 16, 12), COLORS[0], 2)
-	else:
-		for y in range(100, int(h), 80):
-			draw_line(Vector2(0, y), Vector2(w, y), Color(0.55, 0.7, 1, 0.035), 1)
+		if not is_instance_valid(background_video) or not background_video.visible:
+			draw_rect(Rect2(Vector2.ZERO, size), Color("101516"))
+			for x in range(0, int(w), 48):
+				draw_line(Vector2(x, 0), Vector2(x, h), Color(1, 1, 1, 0.025))
+		draw_rect(Rect2(16, 12, w - 32, 55), Color("262d2e"))
+		draw_rect(Rect2(16, 12, 6, 55), GraphicSkin.RED)
+		return
+	draw_rect(Rect2(Vector2.ZERO, size), GraphicSkin.PAPER)
+	# Large cropped record and solid print blocks replace the neon grid.
+	var center = Vector2(w + 100, h * 0.37)
+	draw_circle(center, 355, Color("e1ded3"))
+	for radius in range(210, 350, 12):
+		draw_arc(center, radius, 0, TAU, 100, Color("cbc9bf"), 1, true)
+	var angle: float = ui_clock * 0.12
+	draw_arc(center, 290, angle, angle + 0.8, 40, GraphicSkin.RED, 22, true)
+	draw_colored_polygon(PackedVector2Array([Vector2(0, h * 0.35), Vector2(115, h * 0.35 - 80), Vector2(115, h * 0.35 - 30), Vector2(0, h * 0.35 + 50)]), GraphicSkin.BLUE)
+	for row in range(9):
+		for column in range(8):
+			draw_circle(Vector2(18 + column * 11, h - 32 - row * 11), 1.3, Color("bcbcb3"))
+	draw_rect(Rect2(0, 0, w, 7), GraphicSkin.INK)
+	draw_rect(Rect2(0, h - 9, w, 9), GraphicSkin.RED)
+	for tick in range(25):
+		var x: float = fposmod(tick * 65.0 + ui_clock * 18, w + 65) - 65
+		draw_line(Vector2(x, h - 9), Vector2(x + 9, h), GraphicSkin.PAPER, 2)
 
 func network_source_song() -> Dictionary:
 	var song: Dictionary = selected.duplicate(true)

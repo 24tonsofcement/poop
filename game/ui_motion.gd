@@ -86,7 +86,7 @@ func launch(owner_control: Control, disc: Button, preview: AudioStreamPlayer, ac
 	launching = true
 	veil = ColorRect.new()
 	veil.name = "SongTransition"
-	veil.color = Color("080e20")
+	veil.color = Color("101516")
 	veil.modulate.a = 0.0
 	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	veil.mouse_filter = Control.MOUSE_FILTER_STOP

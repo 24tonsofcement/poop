@@ -1,10 +1,8 @@
 extends Button
-# Vector CD: legible at every display scale; the reflection rotates on launch.
 var spin: float = 0.0:
 	set(value):
 		spin = value
 		queue_redraw()
-
 func _ready() -> void:
 	text = ""
 	tooltip_text = "Play selected song"
@@ -15,27 +13,21 @@ func _ready() -> void:
 	mouse_exited.connect(queue_redraw)
 	focus_entered.connect(queue_redraw)
 	focus_exited.connect(queue_redraw)
-
 func _draw() -> void:
-	var plate = PackedVector2Array([Vector2(16, 3), Vector2(size.x - 14, 3), Vector2(size.x - 2, 15), Vector2(size.x - 2, size.y - 3), Vector2(14, size.y - 3), Vector2(2, size.y - 15), Vector2(2, 17)])
-	draw_colored_polygon(plate, Color("153954") if is_hovered() else Color("10273f"))
-	plate.append(plate[0])
-	draw_polyline(plate, Color("35e7ff"), 2, true)
-	var center: Vector2 = Vector2(43, size.y / 2.0)
-	var strength: float = 0.25 if disabled else 1.0
+	var ink = Color("212322")
+	var paper = Color("faf8f1")
 	var hover: bool = (is_hovered() or has_focus()) and not disabled
-	draw_circle(center + Vector2(0, 4), 31, Color(0.01, 0.02, 0.07, 0.6 * strength))
-	draw_circle(center, 34 if hover else 32, Color(0.3, 0.9, 1.0, (0.18 if hover else 0.07) * strength))
-	draw_circle(center, 29, Color(Color("c7d4ed"), strength))
-	for i in range(48):
-		var angle: float = TAU * i / 48.0 + spin
-		var tint: Color = Color.from_hsv(fposmod(float(i) / 48.0 + 0.5, 1.0), 0.35, 1.0, 0.38 * strength)
-		draw_arc(center, 23.0, angle, angle + TAU / 48.0, 4, tint, 10, true)
-	for radius in [12.0, 18.0, 27.0]:
-		draw_arc(center, radius, 0, TAU, 64, Color(1, 1, 1, 0.3 * strength), 1.0, true)
-	draw_arc(center, 25, spin - 0.2, spin + 0.55, 24, Color(1, 1, 1, 0.65 * strength), 3.0, true)
-	draw_circle(center, 8, Color("101a32"))
-	draw_circle(center, 3, Color("5bded9"))
-	var font = get_theme_default_font()
-	draw_string(font, Vector2(89, size.y / 2.0 + 1), "PLAY", HORIZONTAL_ALIGNMENT_LEFT, -1, 21, Color(Color("f1f6ff"), strength))
-	draw_string(font, Vector2(89, size.y / 2.0 + 19), "DROP THE NEEDLE", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(Color("85a1c6"), strength))
+	var alpha: float = 0.45 if disabled else 1.0
+	draw_rect(Rect2(4, 6, size.x - 5, size.y - 7), ink)
+	draw_rect(Rect2(0, 1, size.x - 5, size.y - 7), Color("2452bf") if hover else Color("d43922"))
+	draw_rect(Rect2(0, 1, size.x - 5, size.y - 7), ink, false, 2)
+	var center = Vector2(37, 33)
+	draw_circle(center, 27, paper)
+	for radius in [20, 23, 25]: draw_arc(center, radius, 0, TAU, 64, Color("b7b9b2"), 1, true)
+	draw_arc(center, 22, spin, spin + 1.2, 32, ink, 3, true)
+	draw_circle(center, 11, Color("f9d44b"))
+	draw_circle(center, 4, ink)
+	var face = get_theme_default_font()
+	draw_string(face, Vector2(75, 34), "PLAY", HORIZONTAL_ALIGNMENT_LEFT, -1, 25, Color(paper, alpha))
+	draw_string(face, Vector2(76, 50), "PRESS / START", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(paper, alpha))
+	draw_colored_polygon(PackedVector2Array([Vector2(size.x - 22, 23), Vector2(size.x - 22, 38), Vector2(size.x - 12, 30.5)]), Color(paper, alpha))

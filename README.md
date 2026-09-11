@@ -1,3 +1,7 @@
+## Record-cabinet redesign — 1.4.0
+
+A new ivory, ink-black, vermilion and cobalt visual system replaces the navy/neon interface. Bold typography, printed panels, catalogue-style song jackets, a record transport button, new switch/slider controls and flat graphic notes retain the existing control positions. Carousel cards are opaque and their borders stay behind cards in front of them. Motion, fullscreen, settings categories and all gameplay features remain available.
+
 ## Arcade interface update — 1.3.0
 
 Fullscreen is available in Settings → Display and with F11, and is remembered between launches. Settings now has seven categories: Display, Timing, Audio, Notes & Video, Effects, Hype, and Accessibility. The carousel remains central, with animated selection frames, orbital backgrounds, sharper layered panels, a framed CD play button and coordinated transitions. Reduced motion stops decorative animation. Existing songs, multiplayer, calibration and scoring features remain available.
