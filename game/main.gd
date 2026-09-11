@@ -10,6 +10,7 @@ const CoverPlaceholder = preload("res://game/ui/cover_placeholder.svg")
 const DiscButton = preload("res://game/disc_button.gd")
 var ui_motion = preload("res://game/ui_motion.gd").new()
 var fullscreen: bool = false
+var last_card_export_dir: String = ""
 var settings_tab: int = 0
 var import_expanded: bool = false
 var reduced_motion: bool = false
@@ -201,6 +202,7 @@ func load_settings() -> void:
 			preview_paused = bool(data.get("preview_paused", false))
 			reduced_motion = bool(data.get("reduced_motion", false))
 			fullscreen = bool(data.get("fullscreen", false))
+			last_card_export_dir = str(data.get("last_card_export_dir", ""))
 			var saved_effects = data.get("visual_effects", {})
 			if saved_effects is Dictionary:
 				for effect in visual_effects:
@@ -247,7 +249,7 @@ func load_settings() -> void:
 func save_settings() -> void:
 	var f = FileAccess.open("user://settings.json", FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"fullscreen": fullscreen, "reduced_motion": reduced_motion, "hype_settings": hype_settings, "music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
+		f.store_string(JSON.stringify({"last_card_export_dir": last_card_export_dir, "fullscreen": fullscreen, "reduced_motion": reduced_motion, "hype_settings": hype_settings, "music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
 
 func valid_song(data) -> bool:
 	if not data is Dictionary or data.get("schema", 0) != 1 or not data.get("charts") is Dictionary:
@@ -1085,7 +1087,13 @@ func export_song_card() -> void:
 	picker.access = FileDialog.ACCESS_FILESYSTEM
 	picker.file_mode = FileDialog.FILE_MODE_SAVE_FILE
 	picker.filters = PackedStringArray(["*.png ; Pulse Four data card"])
-	picker.current_file = str(selected.title).validate_filename() + " - data card.png"
+	if not last_card_export_dir.is_empty() and DirAccess.dir_exists_absolute(last_card_export_dir):
+		picker.current_dir = last_card_export_dir
+	var filename = str(selected.title).validate_filename().strip_edges()
+	while filename.ends_with("."):
+		filename = filename.trim_suffix(".")
+	if filename.is_empty(): filename = "Song"
+	picker.current_file = filename + ".png"
 	picker.file_selected.connect(func(path):
 		var folder = ProjectSettings.globalize_path("user://jobs")
 		DirAccess.make_dir_recursive_absolute(folder)
@@ -1171,6 +1179,10 @@ func poll_import() -> void:
 		if data.get("state") in ["done", "error"]:
 			worker_pid = -1
 			if data.state == "done":
+				var exported_path: String = str(data.get("exported_path", ""))
+				if not exported_path.is_empty():
+					last_card_export_dir = exported_path.get_base_dir()
+					save_settings()
 				if not data.get("warnings", []).is_empty():
 					last_message += " · Skipped: " + "; ".join(data.warnings)
 				scan_songs()

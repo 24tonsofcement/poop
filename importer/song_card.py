@@ -158,7 +158,7 @@ def render_card(thumbnail, title):
             heading = ImageFont.truetype(font_path, 22)
             break
     caption = ImageFont.load_default(size=15)
-    draw.text((18, art.height + 16), 'PULSE FOUR / DATA CARD', font=caption, fill='#ffbd55')
+    draw.text((18, art.height + 16), 'DATA CARD', font=caption, fill='#ffbd55')
     words = str(title).split()
     lines = ['']
     for word in words:
@@ -169,7 +169,7 @@ def render_card(thumbnail, title):
     for i, line in enumerate(lines):
         while draw.textlength(line, font=heading) > width - 52: line = line[:-1]
         draw.text((18, art.height + 43 + i * 27), line, font=heading, fill='#e4edf9')
-    draw.text((18, art.height + 113), 'CHARTS + YOUTUBE LINK / IMPORT IN PULSE FOUR', font=caption, fill='#9aabc4')
+    draw.text((18, art.height + 113), 'CHARTS + YOUTUBE LINK / KEEP ORIGINAL PNG', font=caption, fill='#9aabc4')
     output = io.BytesIO()
     canvas.save(output, format='PNG')
     return output.getvalue()

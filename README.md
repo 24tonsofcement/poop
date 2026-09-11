@@ -1,3 +1,7 @@
+## Card export refinements — 1.6.1
+
+Card export remembers the folder of the last successful export across restarts, and defaults to the selected song title followed by `.png`. Exported artwork shows the title and DATA CARD label without the game name. Existing cards remain compatible.
+
 ## PNG data cards and fullscreen fix — 1.6.0
 
 Open **Song Library → Export card** for a YouTube song. The card shows its thumbnail, title, and DATA CARD label. Charts for every instrument and difficulty, timing and hype metadata are embedded with the canonical YouTube link. Audio/video are not included. Send the original PNG as a file/document; re-encoding it as a photo may remove its chart data.

@@ -438,7 +438,7 @@ def main():
                 paths, warnings = import_osu(Path(request['source']).resolve(), library, Path(tmp), job)
             else:
                 raise ValueError('Unknown import kind')
-        atomic_json(job.result, {'state': 'done', 'message': ('Song card exported: ' + request['destination']) if request['kind'] == 'card_export' else 'Import complete', 'progress': 100, 'paths': paths, 'warnings': warnings})
+        atomic_json(job.result, {'state': 'done', 'message': ('Song card exported: ' + request['destination']) if request['kind'] == 'card_export' else 'Import complete', 'progress': 100, 'paths': paths, 'warnings': warnings, 'exported_path': str(Path(request['destination']).resolve()) if request['kind'] == 'card_export' else ''})
     except Exception as error:
         atomic_json(job.result, {'state': 'error', 'message': str(error), 'progress': 0})
         traceback.print_exc()
