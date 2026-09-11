@@ -1,3 +1,7 @@
+## Arcade interface update — 1.3.0
+
+Fullscreen is available in Settings → Display and with F11, and is remembered between launches. Settings now has seven categories: Display, Timing, Audio, Notes & Video, Effects, Hype, and Accessibility. The carousel remains central, with animated selection frames, orbital backgrounds, sharper layered panels, a framed CD play button and coordinated transitions. Reduced motion stops decorative animation. Existing songs, multiplayer, calibration and scoring features remain available.
+
 # Pulse Four
 
 A Godot 4.4.1 four-lane rhythm game with local keyboard players, manual LAN/internet lobbies, osu!mania imports and instrument-specific generated charts, plus the arcade visuals and audio visualizer.

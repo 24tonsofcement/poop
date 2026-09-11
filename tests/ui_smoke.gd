@@ -21,6 +21,33 @@ func run_checks() -> void:
 	play.mouse_exited.emit()
 	await create_timer(0.22).timeout
 	check(play.scale.is_equal_approx(Vector2.ONE), "Mouse exit restores original scale")
+	scene.show_settings()
+	var categories = scene.ui.find_child("SettingsCategories", true, false) as TabContainer
+	check(categories != null and categories.get_tab_count() == 7, "Settings has seven focused categories")
+	for control_name in ["WindowMode", "NoteSpeed", "NoteStyle", "VideoDimming", "HighwayTransparency", "ReducedMotion"]:
+		check(scene.ui.find_child(control_name, true, false) != null, "Setting preserved: " + control_name)
+	scene.set_fullscreen(true)
+	check(scene.fullscreen, "Fullscreen enabled")
+	scene.fullscreen = false
+	scene.load_settings()
+	check(scene.fullscreen, "Fullscreen survives settings reload")
+	scene.set_fullscreen(false)
+	var shortcut = InputEventKey.new()
+	shortcut.physical_keycode = KEY_F11
+	shortcut.pressed = true
+	scene._input(shortcut)
+	check(scene.fullscreen, "F11 enables fullscreen")
+	scene._input(shortcut)
+	check(not scene.fullscreen, "F11 restores windowed mode")
+	for index in range(7):
+		categories.current_tab = index
+		await process_frame
+		await process_frame
+		check(categories.size.x <= scene.size.x and categories.size.y > 200, "Settings category fits viewport: " + str(index))
+	await create_timer(0.3).timeout
+	check(categories.get_current_tab_control().modulate.a == 1.0, "Category transition settles")
+	scene.show_menu()
+	await create_timer(0.5).timeout
 	var previous: Control = scene.ui
 	scene.show_settings()
 	check(previous.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Outgoing screen stops receiving pointer input")

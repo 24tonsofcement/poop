@@ -8,6 +8,8 @@ const WINDOW = 0.160
 const CoverPlaceholder = preload("res://game/ui/cover_placeholder.svg")
 const DiscButton = preload("res://game/disc_button.gd")
 var ui_motion = preload("res://game/ui_motion.gd").new()
+var fullscreen: bool = false
+var settings_tab: int = 0
 var reduced_motion: bool = false
 var ui_clock: float = 0.0
 var ui_redraw_time: float = 0.0
@@ -166,14 +168,15 @@ func apply_theme() -> void:
 	for control_name in ["Button", "OptionButton", "LineEdit", "SpinBox", "ItemList"]:
 		for state in ["normal", "hover", "pressed", "focus"]:
 			var box = StyleBoxFlat.new()
-			box.bg_color = Color("293958") if state == "hover" else Color("111e36")
+			box.bg_color = Color("25456a") if state == "hover" else Color("121d38")
 			box.border_color = COLORS[1] if state == "hover" else COLORS[0] if state == "focus" else Color("33445e")
 			box.set_border_width_all(1)
-			box.border_width_top = 1
+			box.border_width_left = 3
 			box.shadow_color = Color(0.02, 0.01, 0.12, 0.6)
 			box.shadow_size = 8
 			box.shadow_offset = Vector2(0, 3)
-			box.set_corner_radius_all(10)
+			box.set_corner_radius_all(3)
+			box.corner_radius_bottom_right = 16
 			box.content_margin_left = 14
 			box.content_margin_right = 14
 			box.content_margin_top = 10
@@ -204,16 +207,27 @@ func apply_theme() -> void:
 	popup.bg_color = Color("111a38")
 	popup.border_color = COLORS[0]
 	popup.set_border_width_all(1)
-	popup.set_corner_radius_all(12)
+	popup.set_corner_radius_all(4)
 	popup.shadow_size = 12
 	popup.shadow_color = Color(0, 0, 0, 0.35)
 	popup.set_content_margin_all(8)
 	t.set_stylebox("panel", "PopupMenu", popup)
 	var band_panel = popup.duplicate() as StyleBoxFlat
 	band_panel.bg_color = Color("10172f")
-	band_panel.border_color = Color("374561")
+	band_panel.border_color = Color("40618c")
+	band_panel.border_width_top = 3
+	band_panel.corner_radius_bottom_right = 28
 	band_panel.set_content_margin_all(20)
 	t.set_stylebox("panel", "PanelContainer", band_panel)
+	t.set_stylebox("panel", "TabContainer", band_panel)
+	for state in ["tab_selected", "tab_unselected", "tab_hovered"]:
+		var tab = StyleBoxFlat.new()
+		tab.bg_color = Color("25456a") if state == "tab_selected" else Color("111a30")
+		tab.border_color = COLORS[0] if state == "tab_selected" else Color("334565")
+		tab.border_width_top = 3 if state == "tab_selected" else 1
+		tab.set_content_margin_all(14)
+		t.set_stylebox(state, "TabContainer", tab)
+	t.set_font_size("font_size", "TabContainer", 16)
 	var selected_box = StyleBoxFlat.new()
 	selected_box.bg_color = Color("522756")
 	selected_box.border_color = COLORS[1]
@@ -247,6 +261,7 @@ func load_settings() -> void:
 					set(property, clampf(amount, 0, 1))
 			preview_paused = bool(data.get("preview_paused", false))
 			reduced_motion = bool(data.get("reduced_motion", false))
+			fullscreen = bool(data.get("fullscreen", false))
 			var saved_effects = data.get("visual_effects", {})
 			if saved_effects is Dictionary:
 				for effect in visual_effects:
@@ -281,18 +296,19 @@ func load_settings() -> void:
 						valid = false
 						break
 					for key in row:
-						if int(key) <= 0 or int(key) in seen or int(key) in [KEY_ESCAPE, KEY_F5]:
+						if int(key) <= 0 or int(key) in seen or int(key) in [KEY_ESCAPE, KEY_F5, KEY_F11]:
 							valid = false
 						seen.append(int(key))
 			if valid:
 				bindings = keys
 	ui_motion.reduced = reduced_motion
+	apply_window_mode()
 	apply_audio_levels()
 
 func save_settings() -> void:
 	var f = FileAccess.open("user://settings.json", FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"reduced_motion": reduced_motion, "hype_settings": hype_settings, "music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
+		f.store_string(JSON.stringify({"fullscreen": fullscreen, "reduced_motion": reduced_motion, "hype_settings": hype_settings, "music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
 
 func valid_song(data) -> bool:
 	if not data is Dictionary or data.get("schema", 0) != 1 or not data.get("charts") is Dictionary:
@@ -458,6 +474,11 @@ func show_menu() -> void:
 		open_online())
 	multiplayer_menu.disabled = selected.is_empty() or worker_pid > 0
 	button_into(header, "Settings", show_settings)
+	var masthead = box_into(root, true)
+	label_into(masthead, "01 / SELECT MUSIC", 34, WHITE)
+	var subtitle = label_into(masthead, "PULSE FOUR   /   RHYTHM CONNECTED", 13, COLORS[0])
+	subtitle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	var board = box_into(root)
 	board.name = "MenuLeaderboard"
 	refresh_menu_leaderboard()
@@ -488,7 +509,7 @@ func show_menu() -> void:
 	root.add_child(panel)
 	var setup = box_into(panel)
 	var count_row = box_into(setup, true)
-	label_into(count_row, "YOUR BAND", 20, COLORS[1])
+	label_into(count_row, "02 / YOUR BAND", 20, COLORS[1])
 	label_into(count_row, "Players", 16)
 	var count = OptionButton.new()
 	count.name = "PlayerCount"
@@ -616,7 +637,8 @@ func build_carousel(carousel: Control) -> void:
 				existing.get_node("Caption").add_theme_font_size_override("font_size", 16 if offset == 0 else 13)
 				carousel.move_child(existing, -1)
 				continue
-		var card = Button.new()
+		var card = preload("res://game/song_card.gd").new()
+		card.motion_source = self
 		card.set_meta("entering", true)
 		card.set_meta("offset", int(offset))
 		card.set_meta("song", song)
@@ -792,6 +814,34 @@ func process_preview(delta: float) -> void:
 			preview_elapsed = 0.0
 			preview.play(preview_start)
 
+func apply_window_mode() -> void:
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
+
+func set_fullscreen(enabled: bool) -> void:
+	fullscreen = enabled
+	apply_window_mode()
+	save_settings()
+	if is_instance_valid(ui):
+		var selector = ui.find_child("WindowMode", true, false) as OptionButton
+		if selector != null: selector.select(1 if fullscreen else 0)
+
+func settings_page(tabs: TabContainer, title: String, heading: String, description: String) -> VBoxContainer:
+	var scroll = ScrollContainer.new()
+	scroll.name = title
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	tabs.add_child(scroll)
+	var margin = MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 24)
+	scroll.add_child(margin)
+	var content = box_into(margin) as VBoxContainer
+	label_into(content, heading, 26, COLORS[tabs.get_tab_count() % 4])
+	var hint = label_into(content, description, 16, MUTED)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return content
+
 func show_settings() -> void:
 	stop_preview()
 	if screen == "menu":
@@ -805,12 +855,42 @@ func show_settings() -> void:
 	for side in ["left", "top", "right", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 28)
 	ui.add_child(margin)
-	var scroll = ScrollContainer.new()
-	margin.add_child(scroll)
-	var root = box_into(scroll)
-	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label_into(root, "SETTINGS", 32, COLORS[0])
-	button_into(root, "Back to songs", show_menu)
+	var root = box_into(margin)
+	var heading = box_into(root, true)
+	var title = label_into(heading, "SYSTEM / SETTINGS", 32, COLORS[0])
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button_into(heading, "Back to songs", show_menu)
+	var tabs = TabContainer.new()
+	tabs.name = "SettingsCategories"
+	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(tabs)
+	var display = settings_page(tabs, "Display", "YOUR STAGE", "Choose how Pulse Four fills your screen.")
+	var settings = settings_page(tabs, "Timing", "FIND YOUR FEEL", "Tune note travel and calibrate your last performance.")
+	var audio_settings = settings_page(tabs, "Audio", "THE MIX", "Balance the song, previews and feedback.")
+	var visuals = settings_page(tabs, "Notes & Video", "READ THE RHYTHM", "Shape your notes and the space behind them.")
+	var effects = settings_page(tabs, "Effects", "LIGHT SHOW", "Choose which gameplay effects you want to see.")
+	var hype_panel = settings_page(tabs, "Hype", "PEAK ENERGY", "Bonus scoring and song-synced celebrations.")
+	var accessibility = settings_page(tabs, "Accessibility", "COMFORT FIRST", "Keep the interface comfortable for you.")
+	label_into(display, "Window mode", 18)
+	var mode = OptionButton.new()
+	mode.name = "WindowMode"
+	mode.add_item("Windowed")
+	mode.add_item("Fullscreen")
+	mode.select(1 if fullscreen else 0)
+	mode.item_selected.connect(func(index): set_fullscreen(index == 1))
+	display.add_child(mode)
+	label_into(display, "F11 toggles fullscreen at any time. Your choice is saved.", 16, MUTED)
+	tabs.current_tab = settings_tab
+	tabs.tab_changed.connect(func(index):
+		settings_tab = index
+		var page = tabs.get_tab_control(index)
+		if page.has_meta("tab_tween"):
+			var old = page.get_meta("tab_tween") as Tween
+			if old != null and old.is_valid(): old.kill()
+		page.modulate.a = 1.0 if reduced_motion else 0.25
+		var tween = create_tween()
+		page.set_meta("tab_tween", tween)
+		tween.tween_property(page, "modulate:a", 1.0, 0.22))
 	var motion_toggle = CheckButton.new()
 	motion_toggle.name = "ReducedMotion"
 	motion_toggle.text = "Reduced motion — stop hover scaling, disc spin and moving backgrounds"
@@ -819,8 +899,7 @@ func show_settings() -> void:
 		reduced_motion = value
 		ui_motion.reduced = value
 		save_settings())
-	root.add_child(motion_toggle)
-	var settings = box_into(root)
+	accessibility.add_child(motion_toggle)
 	add_calibration_panel(settings)
 	label_into(settings, "TIMING AND AUDIO", 16, COLORS[2])
 	label_into(settings, "Offset (ms)", 14)
@@ -842,14 +921,13 @@ func show_settings() -> void:
 	speed.text_submitted.connect(func(_text): apply_note_speed(speed))
 	speed.focus_exited.connect(func(): apply_note_speed(speed))
 	settings.add_child(speed)
-	label_into(settings, "AUDIO MIX", 16, COLORS[0])
+	label_into(audio_settings, "AUDIO MIX", 16, COLORS[0])
 	for item in [["Master volume", "volume"], ["Song volume", "music_volume"], ["Preview volume", "preview_volume"], ["Hit sounds", "hit_volume"], ["Miss sounds", "miss_volume"]]:
-		add_audio_slider(settings, str(item[0]), str(item[1]))
-	var test_sounds = box_into(settings, true)
+		add_audio_slider(audio_settings, str(item[0]), str(item[1]))
+	var test_sounds = box_into(audio_settings, true)
 	button_into(test_sounds, "Test hit", func(): play_feedback(false))
 	button_into(test_sounds, "Test miss", func(): play_feedback(true))
-	label_into(settings, "Set hit or miss volume to 0% to mute that sound.", 14, MUTED)
-	var hype_panel = box_into(root)
+	label_into(audio_settings, "Set hit or miss volume to 0% to mute that sound.", 14, MUTED)
 	label_into(hype_panel, "HYPE MOMENTS", 20, COLORS[0])
 	var hype_toggle = CheckButton.new()
 	hype_toggle.text = "Enable hype scoring bonus"
@@ -865,11 +943,10 @@ func show_settings() -> void:
 	if not selected.is_empty() and not str(selected.get("folder", "")).begins_with("res://") and not online.connected():
 		button_into(hype_panel, "Analyze hype for selected song", func(): start_import("hype", str(selected.folder)))
 	label_into(hype_panel, "Analyze older imports here; charts stay unchanged. New imports include hype automatically.", 14, MUTED)
-	var visuals = box_into(root)
-	label_into(visuals, "EFFECTS", 16, COLORS[1])
+	label_into(effects, "EFFECTS", 16, COLORS[1])
 	var effects_grid = GridContainer.new()
 	effects_grid.columns = 2
-	visuals.add_child(effects_grid)
+	effects.add_child(effects_grid)
 	for item in [["Lane flashes", "lane_flashes"], ["Hit rings", "hit_rings"], ["Hit sparks", "hit_sparks"], ["Combo glow and celebrations", "combo_glow"], ["Judgement popups", "judgements"], ["Note trails", "note_trails"], ["Miss border flash", "miss_flash"], ["Hold shimmer", "hold_shimmer"], ["Song spectrum visualizers", "audio_visualizer"], ["Bass-reactive edge glow", "bass_glow"]]:
 		add_effect_toggle(effects_grid, str(item[0]), str(item[1]))
 	label_into(visuals, "Notes", 14)
@@ -1319,6 +1396,10 @@ func toggle_pause() -> void:
 	queue_redraw()
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F11 and pending_key.x < 0:
+		set_fullscreen(not fullscreen)
+		get_viewport().set_input_as_handled()
+		return
 	if ui_motion.launching:
 		return
 	if not event is InputEventKey or event.echo:
@@ -1328,7 +1409,7 @@ func _input(event: InputEvent) -> void:
 		if key == KEY_ESCAPE:
 			pending_key = Vector2i(-1, -1)
 			last_message = "Rebind cancelled."
-		elif key == KEY_F5 or key == 0:
+		elif key in [KEY_F5, KEY_F11, 0]:
 			last_message = "That key is reserved. Choose another key."
 		else:
 			var used: bool = false
@@ -1382,7 +1463,8 @@ func _process(delta: float) -> void:
 			ui_redraw_time = 0.0
 			queue_redraw()
 	music_visualizer.sample(delta, screen == "game" and playing and not paused and (visual_effects.audio_visualizer or visual_effects.bass_glow or float(hype_settings.glow) > 0))
-	process_preview(delta)
+	if not ui_motion.launching:
+		process_preview(delta)
 	if online_game and not runs.is_empty() and screen in ["game", "results"]:
 		var local_run: Dictionary = runs[0]
 		online.report = {"score": local_run.score, "combo": local_run.combo, "accuracy": 100.0 * float(local_run.raw_score) / maxf(300, float(local_run.judged) * 300), "finished": screen == "results"}
@@ -1529,7 +1611,11 @@ func draw_note_sprite(center: Vector2, width: float, tint: Color) -> void:
 	var height: float = body_width * 0.38
 	draw_rect(Rect2(center - Vector2(body_width * 0.53, height * 0.6), Vector2(body_width * 1.06, height * 1.2)), Color(tint, tint.a * 0.12))
 	if note_style == "Bar":
-		draw_rect(Rect2(center - Vector2(body_width, height) / 2, Vector2(body_width, height)), tint)
+		var bevel: float = minf(6.0, body_width * 0.12)
+		var origin: Vector2 = center - Vector2(body_width, height) / 2
+		var shape = PackedVector2Array([origin + Vector2(bevel, 0), origin + Vector2(body_width, 0), origin + Vector2(body_width, height - bevel), origin + Vector2(body_width - bevel, height), origin + Vector2(0, height), origin + Vector2(0, bevel)])
+		draw_colored_polygon(shape, tint)
+		draw_line(origin + Vector2(2, height - 2), origin + Vector2(body_width - bevel, height - 2), Color(tint.darkened(0.5), tint.a), maxf(1, height * 0.2))
 		draw_rect(Rect2(center - Vector2(body_width / 2 - 2, height / 2 - 2), Vector2(maxf(1, body_width - 4), maxf(2, height * 0.15))), Color(WHITE, tint.a * 0.55))
 	else:
 		var ink_width: float = 52.0 if note_style == "Square" else 54.0
@@ -1692,6 +1778,12 @@ func _draw() -> void:
 				draw_note_sprite(center, note_width, LANE_COLORS[int(lane)])
 				if bool(n.get("recovery", false)):
 					draw_arc(center, note_width * 0.43, 0, TAU, 24, WHITE, 2.0, true)
+		for edge in [0, 4]:
+			var far = road_point(x, track_w, top, hit, edge, top)
+			var near = road_point(x, track_w, top, hit, edge, hit)
+			draw_line(far, near, Color(COLORS[p], highway_opacity * 0.12), 9, true)
+			draw_line(far, near, Color(COLORS[p], highway_opacity * 0.8), 2, true)
+		draw_line(Vector2(x, hit + 4), Vector2(x + track_w, hit + 4), Color(COLORS[p], 0.16), 12)
 		draw_line(Vector2(x, hit), Vector2(x + track_w, hit), COLORS[p], 2)
 		for effect in r.effects:
 			var progress: float = float(effect.age) / 0.45
@@ -2057,11 +2149,16 @@ func draw_arcade_backdrop() -> void:
 			var color: Color = Color("171a34").lerp(Color("080f20"), amount)
 			draw_rect(Rect2(0, h * band / 24.0, w, h / 24.0 + 1), color)
 	if screen != "game":
-		for stripe in range(9):
-			var x: float = w - 370 + stripe * 45 + sin(ui_clock * 0.12) * 15
-			draw_colored_polygon(PackedVector2Array([Vector2(x, 0), Vector2(x + 18, 0), Vector2(x - 260, h), Vector2(x - 278, h)]), Color(COLORS[stripe % 4], 0.045))
-		for ring in range(3):
-			draw_arc(Vector2(w - 135, 105), 65 + ring * 25, 0.2 + ui_clock * 0.06, 4.9 + ui_clock * 0.06, 64, Color(COLORS[ring], 0.10), 3.0, true)
+		var center = Vector2(w * 0.5, h * 0.36)
+		for ring in range(5):
+			var angle: float = ui_clock * (0.08 if ring % 2 == 0 else -0.06) + ring
+			draw_arc(center, 150 + ring * 66, angle, angle + 4.5, 100, Color(COLORS[ring % 4], 0.045), 2 if ring % 2 else 12, true)
+		for stripe in range(12):
+			var x: float = fposmod(stripe * 150.0 + ui_clock * 12, w + h) - h
+			draw_line(Vector2(x, h), Vector2(x + h, 0), Color(COLORS[stripe % 4], 0.04), 18)
+		for dot in range(30):
+			var at = Vector2(fposmod(dot * 137.0, w), fposmod(dot * 89.0 - ui_clock * 9, h))
+			draw_rect(Rect2(at, Vector2(3, 3)), Color(COLORS[dot % 4], 0.22))
 	for lane in range(4):
 		draw_rect(Rect2(w * lane / 4.0, 0, w / 4.0 + 1, 4), LANE_COLORS[lane])
 		draw_rect(Rect2(w * lane / 4.0, h - 5, w / 4.0 + 1, 5), Color(LANE_COLORS[lane], 0.65))

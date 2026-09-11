@@ -17,6 +17,10 @@ func _ready() -> void:
 	focus_exited.connect(queue_redraw)
 
 func _draw() -> void:
+	var plate = PackedVector2Array([Vector2(16, 3), Vector2(size.x - 14, 3), Vector2(size.x - 2, 15), Vector2(size.x - 2, size.y - 3), Vector2(14, size.y - 3), Vector2(2, size.y - 15), Vector2(2, 17)])
+	draw_colored_polygon(plate, Color("153954") if is_hovered() else Color("10273f"))
+	plate.append(plate[0])
+	draw_polyline(plate, Color("35e7ff"), 2, true)
 	var center: Vector2 = Vector2(43, size.y / 2.0)
 	var strength: float = 0.25 if disabled else 1.0
 	var hover: bool = (is_hovered() or has_focus()) and not disabled
