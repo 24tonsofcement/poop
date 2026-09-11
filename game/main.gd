@@ -5,6 +5,12 @@ const LANE_COLORS = [Color("24edff"), Color("ff48bb"), Color("ffe354"), Color("9
 const WHITE = Color("f3f6ff")
 const MUTED = Color("abb4e0")
 const WINDOW = 0.160
+const CoverPlaceholder = preload("res://game/ui/cover_placeholder.svg")
+const DiscButton = preload("res://game/disc_button.gd")
+var ui_motion = preload("res://game/ui_motion.gd").new()
+var reduced_motion: bool = false
+var ui_clock: float = 0.0
+var ui_redraw_time: float = 0.0
 const Calibration = preload("res://game/calibration.gd")
 var last_timing: Array = []
 const Hype = preload("res://game/hype.gd")
@@ -84,6 +90,7 @@ var online_mode: int = 0
 
 
 func _ready() -> void:
+	add_child(ui_motion)
 	add_child(online)
 	pack_transfer.lobby = online
 	add_child(pack_transfer)
@@ -159,14 +166,14 @@ func apply_theme() -> void:
 	for control_name in ["Button", "OptionButton", "LineEdit", "SpinBox", "ItemList"]:
 		for state in ["normal", "hover", "pressed", "focus"]:
 			var box = StyleBoxFlat.new()
-			box.bg_color = Color("452556") if state == "hover" else Color("151e43")
-			box.border_color = COLORS[1] if state == "hover" else COLORS[0] if state == "focus" else Color("476895")
-			box.set_border_width_all(2)
-			box.border_width_top = 3
+			box.bg_color = Color("293958") if state == "hover" else Color("111e36")
+			box.border_color = COLORS[1] if state == "hover" else COLORS[0] if state == "focus" else Color("33445e")
+			box.set_border_width_all(1)
+			box.border_width_top = 1
 			box.shadow_color = Color(0.02, 0.01, 0.12, 0.6)
-			box.shadow_size = 4
+			box.shadow_size = 8
 			box.shadow_offset = Vector2(0, 3)
-			box.set_corner_radius_all(4)
+			box.set_corner_radius_all(10)
 			box.content_margin_left = 14
 			box.content_margin_right = 14
 			box.content_margin_top = 10
@@ -175,7 +182,7 @@ func apply_theme() -> void:
 		t.set_color("font_color", control_name, WHITE)
 		t.set_color("font_hover_color", control_name, Color("ffffff"))
 		t.set_color("font_outline_color", control_name, Color("090a23"))
-		t.set_constant("outline_size", control_name, 2)
+		t.set_constant("outline_size", control_name, 0)
 	t.set_color("font_color", "Label", WHITE)
 	for control_name in ["HSlider", "VSlider", "ProgressBar", "HScrollBar", "VScrollBar"]:
 		var track = StyleBoxFlat.new()
@@ -196,13 +203,16 @@ func apply_theme() -> void:
 	var popup = StyleBoxFlat.new()
 	popup.bg_color = Color("111a38")
 	popup.border_color = COLORS[0]
-	popup.set_border_width_all(2)
+	popup.set_border_width_all(1)
+	popup.set_corner_radius_all(12)
+	popup.shadow_size = 12
+	popup.shadow_color = Color(0, 0, 0, 0.35)
 	popup.set_content_margin_all(8)
 	t.set_stylebox("panel", "PopupMenu", popup)
 	var band_panel = popup.duplicate() as StyleBoxFlat
 	band_panel.bg_color = Color("10172f")
-	band_panel.border_color = COLORS[1]
-	band_panel.set_content_margin_all(14)
+	band_panel.border_color = Color("374561")
+	band_panel.set_content_margin_all(20)
 	t.set_stylebox("panel", "PanelContainer", band_panel)
 	var selected_box = StyleBoxFlat.new()
 	selected_box.bg_color = Color("522756")
@@ -236,6 +246,7 @@ func load_settings() -> void:
 				if is_finite(amount):
 					set(property, clampf(amount, 0, 1))
 			preview_paused = bool(data.get("preview_paused", false))
+			reduced_motion = bool(data.get("reduced_motion", false))
 			var saved_effects = data.get("visual_effects", {})
 			if saved_effects is Dictionary:
 				for effect in visual_effects:
@@ -275,12 +286,13 @@ func load_settings() -> void:
 						seen.append(int(key))
 			if valid:
 				bindings = keys
+	ui_motion.reduced = reduced_motion
 	apply_audio_levels()
 
 func save_settings() -> void:
 	var f = FileAccess.open("user://settings.json", FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"hype_settings": hype_settings, "music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
+		f.store_string(JSON.stringify({"reduced_motion": reduced_motion, "hype_settings": hype_settings, "music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
 
 func valid_song(data) -> bool:
 	if not data is Dictionary or data.get("schema", 0) != 1 or not data.get("charts") is Dictionary:
@@ -334,14 +346,13 @@ func scan_songs() -> void:
 		selected = songs[0]
 
 func clear_ui() -> void:
-	if screen != "menu":
+	if screen != "menu" and not ui_motion.launching:
 		stop_preview()
-	if is_instance_valid(ui):
-		remove_child(ui)
-		ui.queue_free()
+	var previous: Control = ui if is_instance_valid(ui) else null
 	ui = Control.new()
 	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(ui)
+	ui_motion.swap(previous, ui, "pause" if screen == "game" and paused else screen)
 
 func label_into(parent: Node, text: String, size_px: int = 18, color: Color = WHITE) -> Label:
 	var l = Label.new()
@@ -349,8 +360,8 @@ func label_into(parent: Node, text: String, size_px: int = 18, color: Color = WH
 	l.add_theme_font_size_override("font_size", size_px)
 	if size_px >= 28:
 		l.add_theme_color_override("font_shadow_color", Color("742a80"))
-		l.add_theme_constant_override("shadow_offset_x", 3)
-		l.add_theme_constant_override("shadow_offset_y", 3)
+		l.add_theme_constant_override("shadow_offset_x", 1)
+		l.add_theme_constant_override("shadow_offset_y", 2)
 	l.add_theme_color_override("font_color", color)
 	parent.add_child(l)
 	return l
@@ -463,9 +474,11 @@ func show_menu() -> void:
 	var play_row = box_into(root, true)
 	play_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	button_into(play_row, "◀", func(): move_song(-1)).disabled = filtered.size() < 2
-	var play = button_into(play_row, "▶  PLAY", start_game)
+	var play = DiscButton.new()
+	play_row.add_child(play)
+	play.pressed.connect(func(): request_play(play))
 	play.name = "PlaySong"
-	play.custom_minimum_size = Vector2(180, 44)
+	play.custom_minimum_size = Vector2(188, 72)
 	play.disabled = selected.is_empty()
 	var preview_button = button_into(play_row, "Resume preview" if preview_paused else "Pause preview", toggle_preview)
 	preview_button.name = "PreviewToggle"
@@ -624,6 +637,8 @@ func build_carousel(carousel: Control) -> void:
 		cover.offset_bottom = -62
 		card.add_child(cover)
 		cover.texture = covers.texture_for(song)
+		if cover.texture == null:
+			cover.texture = CoverPlaceholder
 		var caption = Label.new()
 		caption.name = "Caption"
 		caption.text = str(song.title) + "\n" + str(song.artist)
@@ -645,7 +660,7 @@ func build_carousel(carousel: Control) -> void:
 		stop_card_tween(card)
 		var exit_motion = card.create_tween().set_parallel(true)
 		card.set_meta("motion", exit_motion)
-		exit_motion.tween_property(card, "position:x", card.position.x - carousel_direction * 140, 0.32)
+		exit_motion.tween_property(card, "position:x", card.position.x - carousel_direction * (0 if reduced_motion else 140), 0.32)
 		exit_motion.tween_property(card, "modulate:a", 0.0, 0.32)
 		exit_motion.chain().tween_callback(card.queue_free)
 	var direction: int = carousel_direction
@@ -654,7 +669,7 @@ func build_carousel(carousel: Control) -> void:
 	carousel.set_meta("generation", generation)
 	call_deferred("animate_carousel", carousel, direction, generation)
 
-func animate_carousel(carousel: Control, direction: int, generation: int) -> void:
+func animate_carousel(carousel, direction: int, generation: int) -> void:
 	if not is_instance_valid(carousel) or not carousel.is_inside_tree() or int(carousel.get_meta("generation", -1)) != generation:
 		return
 	carousel.set_meta("transition_pending", false)
@@ -683,7 +698,7 @@ func layout_carousel(carousel: Control, animate: bool = false) -> void:
 		var target: Vector2 = Vector2(center + offset * spacing - target_size.x / 2, (220 - target_size.y) / 2)
 		var tint: Color = Color(1, 1, 1, 1.0 - 0.2 * absi(offset))
 		stop_card_tween(card)
-		if animate and carousel_direction != 0:
+		if animate and carousel_direction != 0 and not reduced_motion:
 			if card.get_meta("entering", false):
 				card.position = target + Vector2(carousel_direction * spacing, 0)
 				card.size = target_size * 0.8
@@ -705,7 +720,8 @@ func refresh_carousel_covers() -> void:
 		return
 	for card in carousel.get_children():
 		if card.has_meta("song"):
-			card.get_node("Cover").texture = covers.texture_for(card.get_meta("song"))
+			var texture = covers.texture_for(card.get_meta("song"))
+			card.get_node("Cover").texture = texture if texture != null else CoverPlaceholder
 
 func refresh_menu_leaderboard() -> void:
 	var board = ui.find_child("MenuLeaderboard", true, false)
@@ -795,6 +811,15 @@ func show_settings() -> void:
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label_into(root, "SETTINGS", 32, COLORS[0])
 	button_into(root, "Back to songs", show_menu)
+	var motion_toggle = CheckButton.new()
+	motion_toggle.name = "ReducedMotion"
+	motion_toggle.text = "Reduced motion — stop hover scaling, disc spin and moving backgrounds"
+	motion_toggle.button_pressed = reduced_motion
+	motion_toggle.toggled.connect(func(value):
+		reduced_motion = value
+		ui_motion.reduced = value
+		save_settings())
+	root.add_child(motion_toggle)
 	var settings = box_into(root)
 	add_calibration_panel(settings)
 	label_into(settings, "TIMING AND AUDIO", 16, COLORS[2])
@@ -1294,6 +1319,8 @@ func toggle_pause() -> void:
 	queue_redraw()
 
 func _input(event: InputEvent) -> void:
+	if ui_motion.launching:
+		return
 	if not event is InputEventKey or event.echo:
 		return
 	var key: int = event.physical_keycode
@@ -1347,6 +1374,13 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
+	if not reduced_motion:
+		ui_clock += delta
+	if screen != "game":
+		ui_redraw_time += delta
+		if ui_redraw_time >= 1.0 / 30.0:
+			ui_redraw_time = 0.0
+			queue_redraw()
 	music_visualizer.sample(delta, screen == "game" and playing and not paused and (visual_effects.audio_visualizer or visual_effects.bass_glow or float(hype_settings.glow) > 0))
 	process_preview(delta)
 	if online_game and not runs.is_empty() and screen in ["game", "results"]:
@@ -2020,14 +2054,14 @@ func draw_arcade_backdrop() -> void:
 	if not is_instance_valid(background_video) or not background_video.visible:
 		for band in range(24):
 			var amount: float = float(band) / 23.0
-			var color: Color = Color("20123f").lerp(Color("071a31"), amount)
+			var color: Color = Color("171a34").lerp(Color("080f20"), amount)
 			draw_rect(Rect2(0, h * band / 24.0, w, h / 24.0 + 1), color)
 	if screen != "game":
 		for stripe in range(9):
-			var x: float = w - 370 + stripe * 45
+			var x: float = w - 370 + stripe * 45 + sin(ui_clock * 0.12) * 15
 			draw_colored_polygon(PackedVector2Array([Vector2(x, 0), Vector2(x + 18, 0), Vector2(x - 260, h), Vector2(x - 278, h)]), Color(COLORS[stripe % 4], 0.045))
 		for ring in range(3):
-			draw_arc(Vector2(w - 135, 105), 65 + ring * 25, 0.2, 4.9, 64, Color(COLORS[ring], 0.13), 3.0, true)
+			draw_arc(Vector2(w - 135, 105), 65 + ring * 25, 0.2 + ui_clock * 0.06, 4.9 + ui_clock * 0.06, 64, Color(COLORS[ring], 0.10), 3.0, true)
 	for lane in range(4):
 		draw_rect(Rect2(w * lane / 4.0, 0, w / 4.0 + 1, 4), LANE_COLORS[lane])
 		draw_rect(Rect2(w * lane / 4.0, h - 5, w / 4.0 + 1, 5), Color(LANE_COLORS[lane], 0.65))
@@ -2163,7 +2197,7 @@ func add_hype_slider(parent: Control, title: String, key: String) -> void:
 	parent.add_child(slider)
 
 func hype_shake() -> Vector2:
-	if screen != "game" or paused or not playing:
+	if screen != "game" or paused or not playing or reduced_motion:
 		return Vector2.ZERO
 	var pulse: float = 0.0
 	for run in runs:
@@ -2207,3 +2241,16 @@ func add_calibration_panel(parent: Control) -> void:
 				show_settings())
 		else:
 			label_into(parent, "Timing was too variable for a reliable automatic adjustment. Try another song.", 14, MUTED)
+
+func request_play(disc: Button) -> void:
+	if selected.is_empty() or ui_motion.launching:
+		return
+	if not commit_preferences():
+		return
+	commit_player_names()
+	var song_id: String = str(selected.id)
+	ui_motion.launch(self, disc, preview, func():
+		if screen == "menu" and not selected.is_empty() and str(selected.id) == song_id:
+			start_game()
+		else:
+			apply_audio_levels())

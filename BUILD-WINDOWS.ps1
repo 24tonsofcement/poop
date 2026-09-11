@@ -74,6 +74,7 @@ Run $VenvPython @('scripts/make_video_smoke.py')
 Run $VenvPython @('-m','unittest','discover','-s','tests','-p','test_*.py','-v')
 RunGodot $Godot @('--headless','--path',$PSScriptRoot,'--editor','--import')
 RunGodot $Godot @('--headless','--path',$PSScriptRoot,'--script','tests/smoke.gd','--quit-after','600')
+RunGodot $Godot @('--headless','--path',$PSScriptRoot,'--script','tests/ui_smoke.gd','--quit-after','1200')
 RunGodot $Godot @('--headless','--path',$PSScriptRoot,'--export-release','Windows Desktop',(Join-Path $Release 'PulseFour.exe'))
 Run $VenvPython @('-m','PyInstaller','--noconfirm','--clean','--onedir','--console','--name','PulseImporter',
     '--distpath',(Join-Path $Build 'frozen'),'--workpath',(Join-Path $Build 'pyinstaller'),'--specpath',$Build,
