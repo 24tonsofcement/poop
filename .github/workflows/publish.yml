@@ -58,15 +58,26 @@ jobs:
           if not re.fullmatch(r'\d+\.\d+\.\d+', version):
               raise SystemExit('Invalid packaged version')
           tag = 'v' + version
+          # GitHub's Actions token cannot tag an older workflow revision. Confirm
+          # the current default branch has identical application/build source.
+          repo = os.environ['GH_REPO']
+          head = json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/commits/main']))['sha']
+          source = os.environ['SOURCE_SHA']
+          comparison = json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/compare/{source}...{head}']))
+          if comparison['status'] not in ('ahead', 'identical'):
+              raise SystemExit('Build is not an ancestor of main')
+          if any(not f['filename'].startswith('.github/workflows/') and f['filename'] != 'README.md'
+                 for f in comparison.get('files', [])):
+              raise SystemExit('Application source changed since this build; wait for the latest build')
           existing = subprocess.run(['gh','release','view',tag,'--json','isDraft'],capture_output=True,text=True)
           if existing.returncode == 0:
               if json.loads(existing.stdout)['isDraft']:
                   raise SystemExit('An incomplete draft already exists; inspect it before retrying')
               print('Version already published:', tag)
           else:
-              subprocess.run(['gh','release','create',tag,'--target',os.environ['SOURCE_SHA'],
+              subprocess.run(['gh','release','create',tag,'--target',head,
                   '--draft','--title','Pulse Four ' + version,'--notes',
-                  'Download PulseFour-Launcher.exe and open it. It installs the game automatically and checks for updates on every launch. Existing songs, scores and settings are preserved.',
+                  'Download PulseFour-Launcher.exe and open it. It installs the game automatically and checks for updates on every launch. Existing songs, scores and settings are preserved. Built from ' + source + '.',
                   str(launcher),str(payload)],check=True)
               subprocess.run(['gh','release','edit',tag,'--draft=false','--latest'],check=True)
           PY
