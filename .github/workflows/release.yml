@@ -44,12 +44,16 @@ jobs:
             dist/launcher/PulseFour-Launcher.exe
             dist/PulseFour-update.zip
       - name: Publish complete release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $Version = (Get-Content VERSION -Raw).Trim()
+          $Existing = gh release view "v$Version" --json isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host 'This version already has a release. Increment VERSION to publish another.'
+            exit 0
+          }
           gh release create "v$Version" --target $env:GITHUB_SHA --draft --title "Pulse Four $Version" --notes 'Download PulseFour-Launcher.exe and open it. It installs the game and checks for updates on every launch.' dist/launcher/PulseFour-Launcher.exe dist/PulseFour-update.zip
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed; existing releases are never overwritten' }
           gh release edit "v$Version" --draft=false --latest

@@ -14,9 +14,9 @@ App files are under `%LOCALAPPDATA%\PulseFour\app\versions`. Songs, settings and
 
 1. Edit source and run the relevant tests.
 2. Increment `VERSION` (for example `1.0.1`).
-3. Commit and push, then push matching tag `v1.0.1`.
+3. Commit and push to `main`. GitHub publishes the new version after the build passes.
 
-GitHub Actions builds on pushes to main and builds/publishes on version tags. The **Run workflow** button can also publish the version in `VERSION`. Release assets remain a draft until both uploads finish; failed builds do not reach players. Never reuse or overwrite a published version. A workflow run on main produces downloadable build artifacts without publishing an automatic update.
+GitHub Actions builds on pushes to main and on version tags. It publishes only versions that do not already have a release. The **Run workflow** button can also publish the version in `VERSION`. Release assets remain a draft until both uploads finish; failed builds do not reach players. Never reuse or overwrite a published version. Pushing changes without incrementing VERSION produces build artifacts and leaves the existing release unchanged.
 
 `launcher/` owns update/download/install logic; `game/` owns gameplay and menus; `importer/` owns chart generation; `server/` owns lobby networking; `scripts/` owns build and packaging. The stable launcher contract uses `PulseFour-update.zip`, semantic release tags and GitHub asset SHA-256 digests. Future launcher protocol changes require a compatible migration or a new launcher download.
 
