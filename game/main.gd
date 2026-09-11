@@ -1621,7 +1621,7 @@ func _draw() -> void:
 			draw_line(road_point(x, track_w, top, hit, lane, top), road_point(x, track_w, top, hit, lane, hit), Color(WHITE, highway_opacity * 0.38), 1.5, true)
 			draw_note_sprite(Vector2(left + lane_w / 2, hit), lane_w, Color(LANE_COLORS[lane], 0.55))
 			var name: String = OS.get_keycode_string(int(bindings[p][lane]))
-			text_at(Vector2(left + 12, hit + 48), name, 16, LANE_COLORS[lane], lane_w - 15)
+			text_at(Vector2(left + 12, hit + 35), name, 16, LANE_COLORS[lane], lane_w - 15)
 		draw_line(road_point(x, track_w, top, hit, 4, top), road_point(x, track_w, top, hit, 4, hit), Color(WHITE, highway_opacity * 0.38), 1.5, true)
 		var now: float = chart_time()
 		var visible_end: int = int(r.cursor)
@@ -1678,7 +1678,7 @@ func _draw() -> void:
 			text_at(Vector2(x + 15, hit - 48), str(r.message), 25 + int(5 * float(r.flash) / 0.6), Color("fa7f96") if r.message == "MISS" else WHITE)
 		if visual_effects.miss_flash and r.message == "MISS" and r.flash > 0:
 			draw_rect(Rect2(x, top, track_w, hit - top), Color(1, 0.18, 0.3, float(r.flash) * 0.6), false, 3.0)
-		text_at(Vector2(x, h - 43), "BEST %d×   MISSES %d" % [r.best, r.miss], 14, MUTED)
+		text_at(Vector2(x, h - 36), "BEST %d×   MISSES %d" % [r.best, r.miss], 14, MUTED)
 	if time_s < 0:
 		text_at(Vector2(w / 2 - 55, h / 2), str(int(ceil(-time_s))), 82, WHITE)
 	if online_game:
@@ -2179,7 +2179,7 @@ func draw_hype(run: Dictionary, x: float, width: float, top: float, hit: float, 
 	var pulse: float = 0.0 if paused else Hype.beat_pulse(time_s, run.timing)
 	var bonus: float = hype_multiplier(run)
 	var kind: String = str(run.hype_sections[index].kind).to_upper()
-	text_at(Vector2(x + 8, hit + 65), kind + ("  %.1f× BONUS" % bonus if bonus > 1.0 else "  BONUS LOST" if bool(run.get("hype_broken", false)) else "  HYPE"), 15, tint, width - 16)
+	text_at(Vector2(x + 8, hit + 57), kind + ("  %.1f× BONUS" % bonus if bonus > 1.0 else "  BONUS LOST" if bool(run.get("hype_broken", false)) else "  HYPE"), 15, tint, width - 16)
 	var glow: float = float(hype_settings.glow) * pulse * (0.08 + music_visualizer.bass * 0.08)
 	road_quad(x, width, top, hit, 0, 4, top, hit, Color(tint, glow))
 	if float(hype_settings.rings) > 0 and not paused:
