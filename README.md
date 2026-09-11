@@ -1,3 +1,7 @@
+## Midnight cabinet redesign — 1.5.0
+
+The music carousel now occupies a dedicated stage beside a scrollable player-entry dock. Library filters sit above the stage, records below it, and import tools live in an expandable bottom drawer. The early-2000s cabinet direction uses smoked blue panels, metallic trim, amber indicators, segmented meters, a chrome CD and beveled notes. Existing settings, multiplayer, previews, calibration and the carousel overlap fix remain intact.
+
 ## Record-cabinet redesign — 1.4.0
 
 A new ivory, ink-black, vermilion and cobalt visual system replaces the navy/neon interface. Bold typography, printed panels, catalogue-style song jackets, a record transport button, new switch/slider controls and flat graphic notes retain the existing control positions. Carousel cards are opaque and their borders stay behind cards in front of them. Motion, fullscreen, settings categories and all gameplay features remain available.

@@ -11,6 +11,7 @@ const DiscButton = preload("res://game/disc_button.gd")
 var ui_motion = preload("res://game/ui_motion.gd").new()
 var fullscreen: bool = false
 var settings_tab: int = 0
+var import_expanded: bool = false
 var reduced_motion: bool = false
 var ui_clock: float = 0.0
 var ui_redraw_time: float = 0.0
@@ -367,24 +368,31 @@ func show_menu() -> void:
 	var root = box_into(scroll)
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var header = box_into(root, true)
+	var body = box_into(root, true)
+	body.name = "CabinetBody"
+	var stage = box_into(body)
+	stage.name = "MusicStage"
+	stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var library_row = box_into(stage, true)
 	var cats = OptionButton.new()
 	cats.name = "SongCategory"
 	var category_values: Array = ["All songs", "YouTube", "osu!mania"]
 	for item in ["All songs", "YouTube songs", "osu beatmaps"]:
 		cats.add_item(item)
 	cats.select(maxi(0, category_values.find(category)))
-	cats.custom_minimum_size.x = 220
+	cats.custom_minimum_size.x = 190
 	cats.item_selected.connect(func(i):
 		category = category_values[i]
 		show_menu())
-	header.add_child(cats)
+	library_row.add_child(cats)
 	var search = LineEdit.new()
 	search.name = "SongSearch"
 	search.placeholder_text = "Search songs or artists…"
 	search.text = song_search
 	search.clear_button_enabled = true
-	search.custom_minimum_size.x = 230
-	header.add_child(search)
+	search.custom_minimum_size.x = 190
+	search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	library_row.add_child(search)
 	search.text_changed.connect(func(value):
 		var caret: int = search.caret_column
 		song_search = value
@@ -392,8 +400,8 @@ func show_menu() -> void:
 		var replacement = ui.find_child("SongSearch", true, false) as LineEdit
 		replacement.grab_focus()
 		replacement.caret_column = caret)
-	var logo = label_into(header, "PULSE / FOUR", 22, COLORS[0])
-	logo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var logo = label_into(header, "PULSE FOUR //", 38, COLORS[0])
+	logo.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	logo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var multiplayer_menu = MenuButton.new()
 	multiplayer_menu.name = "MultiplayerMenu"
@@ -407,25 +415,25 @@ func show_menu() -> void:
 		open_online())
 	multiplayer_menu.disabled = selected.is_empty() or worker_pid > 0
 	button_into(header, "Settings", show_settings)
-	var masthead = box_into(root, true)
-	label_into(masthead, "SELECT MUSIC.", 42, WHITE)
-	var subtitle = label_into(masthead, "RECORD SELECT   /   VOL. 04", 13, COLORS[0])
+	var masthead = box_into(stage)
+	label_into(masthead, "MUSIC SELECT", 30, WHITE)
+	var subtitle = label_into(masthead, "STAGE 01    /    SELECT YOUR TRACK", 13, COLORS[0])
 	subtitle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var board = box_into(root)
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var board = box_into(stage)
 	board.name = "MenuLeaderboard"
 	refresh_menu_leaderboard()
 	var carousel: Control = retained_carousel if retained_carousel != null else Control.new()
 	carousel.name = "SongCarousel"
-	carousel.custom_minimum_size.y = 228
+	carousel.custom_minimum_size.y = 300
 	carousel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root.add_child(carousel)
+	stage.add_child(carousel)
 	if retained_carousel == null:
 		carousel.resized.connect(func():
 			if not bool(carousel.get_meta("transition_pending", false)):
 				layout_carousel(carousel))
 	build_carousel(carousel)
-	var play_row = box_into(root, true)
+	var play_row = box_into(stage, true)
 	play_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	button_into(play_row, "◀", func(): move_song(-1)).disabled = filtered.size() < 2
 	var play = DiscButton.new()
@@ -438,11 +446,19 @@ func show_menu() -> void:
 	preview_button.name = "PreviewToggle"
 	preview_button.tooltip_text = "Pause stays enabled while browsing and after restarting the game."
 	button_into(play_row, "▶", func(): move_song(1)).disabled = filtered.size() < 2
+	stage.move_child(board, -1)
 	var panel = PanelContainer.new()
-	root.add_child(panel)
-	var setup = box_into(panel)
-	var count_row = box_into(setup, true)
-	label_into(count_row, "PLAYER SETUP /", 20, COLORS[1])
+	panel.name = "PlayerDock"
+	panel.custom_minimum_size.x = 340
+	body.add_child(panel)
+	var player_scroll = ScrollContainer.new()
+	player_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	player_scroll.custom_minimum_size.y = 530
+	panel.add_child(player_scroll)
+	var setup = box_into(player_scroll)
+	setup.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var count_row = box_into(setup)
+	label_into(count_row, "PLAYER ENTRY", 24, COLORS[1])
 	label_into(count_row, "Players", 16)
 	var count = OptionButton.new()
 	count.name = "PlayerCount"
@@ -460,8 +476,16 @@ func show_menu() -> void:
 		show_menu())
 	for p in range(players_count):
 		player_setup(setup, p)
-	setup.add_child(HSeparator.new())
-	var import_row = box_into(setup, true)
+	var import_panel = PanelContainer.new()
+	root.add_child(import_panel)
+	var import_content = box_into(import_panel)
+	var import_toggle = button_into(import_content, "SONG LIBRARY  /  IMPORT & TOOLS", func():
+		import_expanded = not import_expanded
+		show_menu())
+	import_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var import_drawer = box_into(import_content)
+	import_drawer.visible = import_expanded or worker_pid > 0
+	var import_row = box_into(import_drawer, true)
 	label_into(import_row, "IMPORT", 16, COLORS[0])
 	button_into(import_row, "osu / osz", choose_osu).disabled = worker_pid > 0
 	var url = LineEdit.new()
@@ -471,7 +495,7 @@ func show_menu() -> void:
 	button_into(import_row, "Import YouTube", func(): start_import("youtube", url.text.strip_edges())).disabled = worker_pid > 0
 	button_into(import_row, "Songs folder", func(): OS.shell_open(song_root))
 	if not selected.is_empty() and selected.get("category", "") == "YouTube":
-		var regen_row = box_into(setup, true)
+		var regen_row = box_into(import_drawer, true)
 		button_into(regen_row, "Regenerate chart", func(): start_import("regenerate", str(selected.folder))).disabled = worker_pid > 0
 		if selected.get("video", "") != "background.ogv" or not FileAccess.file_exists(str(selected.folder).path_join("background.ogv")):
 			button_into(regen_row, "Download video", func(): start_import("video", str(selected.folder))).disabled = worker_pid > 0
@@ -650,7 +674,7 @@ func layout_carousel(carousel: Control, animate: bool = false) -> void:
 		var offset: int = int(card.get_meta("offset"))
 		var factor: float = 1.0 - 0.18 * absi(offset)
 		var target_size: Vector2 = Vector2(300, 220) * factor
-		var target: Vector2 = Vector2(center + offset * spacing - target_size.x / 2, (220 - target_size.y) / 2)
+		var target: Vector2 = Vector2(center + offset * spacing - target_size.x / 2, (carousel.size.y - target_size.y) / 2)
 		var shade: float = 1.0 - 0.09 * absi(offset)
 		var tint: Color = Color(shade, shade, shade, 1.0)
 		stop_card_tween(card)
@@ -692,14 +716,16 @@ func refresh_menu_leaderboard() -> void:
 	var diff: String = str(choices[0].difficulty)
 	var title_row = box_into(board, true)
 	title_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	label_into(title_row, "PERSONAL BESTS  /  " + part + " · " + diff, 16, COLORS[2])
+	var board_title = label_into(title_row, "RECORDS  /  " + part + " · " + diff, 16, COLORS[2])
+	board_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	board_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button_into(title_row, "All scores", func():
 		board_instrument = part
 		board_difficulty = diff
 		show_leaderboard())
 	var rows: Array = score_store.entries(chart_key_for(part, diff))
-	var scores = box_into(board, true)
-	scores.alignment = BoxContainer.ALIGNMENT_CENTER
+	var scores = HFlowContainer.new()
+	board.add_child(scores)
 	if rows.is_empty():
 		label_into(scores, "No scores yet — set the first record!", 15, MUTED)
 	for i in range(mini(3, rows.size())):
@@ -962,7 +988,9 @@ func commit_player_names() -> void:
 	save_settings()
 
 func player_setup(parent: Node, p: int) -> void:
-	var row = box_into(parent, true)
+	var compact: bool = screen == "menu"
+	var profile_box = box_into(parent) if compact else parent
+	var row = box_into(profile_box, true)
 	label_into(row, "P" + str(p + 1), 18, COLORS[p])
 	for lane in range(4):
 		var key = button_into(row, OS.get_keycode_string(int(bindings[p][lane])), func():
@@ -970,12 +998,16 @@ func player_setup(parent: Node, p: int) -> void:
 			last_message = "Press a new key for P%d lane %d. Esc cancels." % [p + 1, lane + 1]
 			status_label.text = last_message)
 		key.custom_minimum_size.x = 44
+		if compact: key.clip_text = true
+	if compact:
+		row = box_into(profile_box)
 	if not selected.is_empty():
 		var instruments: Array = selected.charts.keys()
 		if not choices[p].get("instrument", "") in instruments:
 			choices[p]["instrument"] = instruments[mini(p, instruments.size() - 1)]
 		var instrument = OptionButton.new()
 		instrument.name = "Instrument%d" % p
+		if compact: instrument.fit_to_longest_item = false
 		for item in instruments:
 			instrument.add_item(str(item))
 		instrument.select(instruments.find(choices[p].instrument))
@@ -990,6 +1022,7 @@ func player_setup(parent: Node, p: int) -> void:
 			choices[p]["difficulty"] = diffs[0]
 		var difficulty = OptionButton.new()
 		difficulty.name = "Difficulty%d" % p
+		if compact: difficulty.fit_to_longest_item = false
 		for item in diffs:
 			difficulty.add_item(str(item))
 		difficulty.select(diffs.find(choices[p].difficulty))
@@ -1010,6 +1043,8 @@ func player_setup(parent: Node, p: int) -> void:
 		save_settings())
 	profile.focus_exited.connect(func(): profile.text = profile_names[p])
 	row.add_child(profile)
+	if compact:
+		profile_box.add_child(HSeparator.new())
 
 func choose_osu() -> void:
 	file_dialog = FileDialog.new()
@@ -1547,7 +1582,10 @@ func draw_note_sprite(center: Vector2, width: float, tint: Color) -> void:
 	if note_style == "Bar":
 		var origin: Vector2 = center - Vector2(body_width, height) / 2
 		draw_rect(Rect2(origin + Vector2(0, 3), Vector2(body_width, height)), Color("0a1011"))
-		draw_rect(Rect2(origin, Vector2(body_width, height)), tint)
+		for band in range(4):
+			var shades: Array = [1.0, 0.78, 0.42, 0.66]
+			draw_rect(Rect2(origin + Vector2(0, height * band / 4), Vector2(body_width, height / 4 + 1)), Color(tint * float(shades[band]), tint.a))
+		draw_line(origin, origin + Vector2(body_width, 0), Color(WHITE, tint.a * 0.8), 2)
 		draw_rect(Rect2(origin + Vector2(3, 3), Vector2(maxf(1, body_width - 6), maxf(1, height - 6))), Color("303938"), false, 1.5)
 		draw_rect(Rect2(center - Vector2(body_width * 0.09, height * 0.2), Vector2(body_width * 0.18, height * 0.4)), Color(WHITE, tint.a))
 	else:
@@ -2084,23 +2122,21 @@ func draw_arcade_backdrop() -> void:
 		draw_rect(Rect2(16, 12, w - 32, 55), Color("262d2e"))
 		draw_rect(Rect2(16, 12, 6, 55), GraphicSkin.RED)
 		return
-	draw_rect(Rect2(Vector2.ZERO, size), GraphicSkin.PAPER)
-	# Large cropped record and solid print blocks replace the neon grid.
-	var center = Vector2(w + 100, h * 0.37)
-	draw_circle(center, 355, Color("e1ded3"))
-	for radius in range(210, 350, 12):
-		draw_arc(center, radius, 0, TAU, 100, Color("cbc9bf"), 1, true)
-	var angle: float = ui_clock * 0.12
-	draw_arc(center, 290, angle, angle + 0.8, 40, GraphicSkin.RED, 22, true)
-	draw_colored_polygon(PackedVector2Array([Vector2(0, h * 0.35), Vector2(115, h * 0.35 - 80), Vector2(115, h * 0.35 - 30), Vector2(0, h * 0.35 + 50)]), GraphicSkin.BLUE)
-	for row in range(9):
-		for column in range(8):
-			draw_circle(Vector2(18 + column * 11, h - 32 - row * 11), 1.3, Color("bcbcb3"))
-	draw_rect(Rect2(0, 0, w, 7), GraphicSkin.INK)
-	draw_rect(Rect2(0, h - 9, w, 9), GraphicSkin.RED)
-	for tick in range(25):
-		var x: float = fposmod(tick * 65.0 + ui_clock * 18, w + 65) - 65
-		draw_line(Vector2(x, h - 9), Vector2(x + 9, h), GraphicSkin.PAPER, 2)
+	for band in range(32):
+		var shade = Color("1b2437").lerp(Color("070a12"), float(band) / 31)
+		draw_rect(Rect2(0, h * band / 32.0, w, h / 32.0 + 1), shade)
+	# Cabinet vents, segmented edge meters and a slow radar sweep.
+	for y in range(0, int(h), 4):
+		draw_line(Vector2(0, y), Vector2(w, y), Color(0, 0, 0, 0.13))
+	for side in [0, 1]:
+		for segment in range(24):
+			var energy: float = 0.12 + 0.16 * (sin(ui_clock * 2.0 - segment * 0.3) + 1)
+			draw_rect(Rect2(5 if side == 0 else w - 12, h - 30 - segment * 20, 7, 13), Color(COLORS[side], energy))
+	var center = Vector2(w * 0.32, h * 0.42)
+	for ring in range(4):
+		draw_arc(center, 130 + ring * 46, ui_clock * 0.08 + ring, ui_clock * 0.08 + ring + 4.5, 70, Color(0.35, 0.55, 0.8, 0.06), 2, true)
+	draw_rect(Rect2(18, 0, w - 36, 5), Color("697d99"))
+	draw_rect(Rect2(18, h - 7, w - 36, 7), Color("202e46"))
 
 func network_source_song() -> Dictionary:
 	var song: Dictionary = selected.duplicate(true)

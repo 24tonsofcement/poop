@@ -13,6 +13,11 @@ func run_checks() -> void:
 	scene.reduced_motion = false
 	scene.ui_motion.reduced = false
 	await create_timer(0.5).timeout
+	var dock = scene.ui.find_child("PlayerDock", true, false)
+	var stage = scene.ui.find_child("MusicStage", true, false)
+	check(dock != null and stage != null, "Cabinet separates music stage and player dock")
+	check(dock.get_global_rect().position.x >= stage.get_global_rect().end.x, "Player dock sits beside the music stage")
+	check(dock.get_global_rect().end.x <= scene.size.x, "Player dock fits the viewport")
 	var play = scene.ui.find_child("PlaySong", true, false)
 	check(play != null and play.get("spin") == 0.0, "Play is a vector CD control")
 	play.mouse_entered.emit()
