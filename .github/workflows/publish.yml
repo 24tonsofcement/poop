@@ -1,5 +1,9 @@
 name: Publish Windows download
 on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/publish.yml"]
+  workflow_dispatch:
   workflow_run:
     workflows: ['Build Windows release']
     types: [completed]
@@ -11,21 +15,37 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main'
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     steps:
+      - name: Select successful build
+        id: build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          RUN="$EVENT_RUN"
+          if [ -z "$RUN" ]; then
+            RUN=$(gh run list --workflow release.yml --branch main --status success --json databaseId --limit 1 --jq '.[0].databaseId')
+          fi
+          test -n "$RUN" && test "$RUN" != "null"
+          SHA=$(gh api "repos/$GH_REPO/actions/runs/$RUN" --jq '.head_sha')
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
           name: PulseFour-Windows
           path: release
           github-token: ${{ github.token }}
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ steps.build.outputs.run }}
       - name: Publish verified build assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_SHA: ${{ steps.build.outputs.sha }}
         run: |
           python3 - <<'PY'
           from pathlib import Path
