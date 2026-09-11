@@ -155,6 +155,9 @@ func _ready() -> void:
 	add_child(background_video)
 	resized.connect(layout_background_video)
 	layout_background_video()
+	get_window().files_dropped.connect(func(files):
+		if files.size() == 1 and str(files[0]).get_extension().to_lower() == "png" and worker_pid <= 0 and screen != "game":
+			start_import("card_import", str(files[0])))
 	load_settings()
 	score_store.load_data()
 	apply_theme()
@@ -485,6 +488,15 @@ func show_menu() -> void:
 	import_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	var import_drawer = box_into(import_content)
 	import_drawer.visible = import_expanded or worker_pid > 0
+	var cards_row = box_into(import_content, true)
+	var import_card_button = button_into(cards_row, "Import song card", choose_song_card)
+	import_card_button.name = "ImportSongCard"
+	import_card_button.disabled = worker_pid > 0
+	var export_button = button_into(cards_row, "Export card", export_song_card)
+	export_button.name = "ExportSongCard"
+	export_button.disabled = worker_pid > 0 or selected.get("category", "") != "YouTube"
+	export_button.tooltip_text = "Share the thumbnail, charts and YouTube link. The receiver downloads the audio and video."
+	label_into(import_drawer, "Send PNG cards as original files/documents; photo compression can remove their charts.", 13, MUTED)
 	var import_row = box_into(import_drawer, true)
 	label_into(import_row, "IMPORT", 16, COLORS[0])
 	button_into(import_row, "osu / osz", choose_osu).disabled = worker_pid > 0
@@ -775,6 +787,7 @@ func process_preview(delta: float) -> void:
 			preview.play(preview_start)
 
 func apply_window_mode() -> void:
+	get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
 
@@ -1046,6 +1059,47 @@ func player_setup(parent: Node, p: int) -> void:
 	if compact:
 		profile_box.add_child(HSeparator.new())
 
+func choose_song_card() -> void:
+	var picker = FileDialog.new()
+	picker.access = FileDialog.ACCESS_FILESYSTEM
+	picker.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	picker.filters = PackedStringArray(["*.png ; Pulse Four data cards"])
+	picker.file_selected.connect(func(path):
+		start_import("card_import", path)
+		picker.queue_free())
+	picker.canceled.connect(picker.queue_free)
+	add_child(picker)
+	picker.popup_centered_ratio(0.75)
+
+func export_song_card() -> void:
+	if selected.get("category", "") != "YouTube" or worker_pid > 0: return
+	var texture = covers.texture_for(selected)
+	if texture == null:
+		last_message = "The YouTube thumbnail is not ready. Wait for it to load, then export again."
+		show_menu()
+		return
+	var snapshot: Dictionary = selected.duplicate(true)
+	snapshot.erase("folder")
+	var thumbnail: Image = texture.get_image()
+	var picker = FileDialog.new()
+	picker.access = FileDialog.ACCESS_FILESYSTEM
+	picker.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	picker.filters = PackedStringArray(["*.png ; Pulse Four data card"])
+	picker.current_file = str(selected.title).validate_filename() + " - data card.png"
+	picker.file_selected.connect(func(path):
+		var folder = ProjectSettings.globalize_path("user://jobs")
+		DirAccess.make_dir_recursive_absolute(folder)
+		var image_path = folder.path_join("card-thumbnail-%d.png" % Time.get_ticks_msec())
+		if thumbnail.save_png(image_path) != OK:
+			last_message = "Could not prepare the thumbnail."
+			show_menu()
+		else:
+			start_import("card_export", str(snapshot.source), {"destination": path, "thumbnail": image_path, "song": snapshot})
+		picker.queue_free())
+	picker.canceled.connect(picker.queue_free)
+	add_child(picker)
+	picker.popup_centered_ratio(0.75)
+
 func choose_osu() -> void:
 	file_dialog = FileDialog.new()
 	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
@@ -1058,7 +1112,7 @@ func choose_osu() -> void:
 	add_child(file_dialog)
 	file_dialog.popup_centered_ratio(0.75)
 
-func start_import(kind: String, source: String) -> void:
+func start_import(kind: String, source: String, extra: Dictionary = {}) -> void:
 	if worker_pid > 0:
 		return
 	if source.is_empty():
@@ -1087,7 +1141,9 @@ func start_import(kind: String, source: String) -> void:
 		last_message = "Could not write import request. Check free disk space."
 		show_menu()
 		return
-	f.store_string(JSON.stringify({"kind": kind, "source": source, "library": song_root, "result": job_result}))
+	var request_data = {"kind": kind, "source": source, "library": song_root, "result": job_result}
+	request_data.merge(extra, true)
+	f.store_string(JSON.stringify(request_data))
 	f.close()
 	args.append_array(["--request", request])
 	worker_pid = OS.create_process(executable, args)

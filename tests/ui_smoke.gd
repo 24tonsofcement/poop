@@ -13,6 +13,21 @@ func run_checks() -> void:
 	scene.reduced_motion = false
 	scene.ui_motion.reduced = false
 	await create_timer(0.5).timeout
+	check(root.content_scale_aspect == Window.CONTENT_SCALE_ASPECT_EXPAND, "Fullscreen expands instead of letterboxing")
+	var original_size: Vector2i = root.size
+	for resolution in [Vector2i(1920, 1080), Vector2i(2560, 1080), Vector2i(1280, 1024)]:
+		root.size = resolution
+		await process_frame
+		await process_frame
+		check(absf(scene.size.x / scene.size.y - float(resolution.x) / resolution.y) < 0.01, "UI fills display aspect: " + str(resolution))
+	root.size = original_size
+	await process_frame
+	await process_frame
+	var import_card = scene.ui.find_child("ImportSongCard", true, false)
+	var export_card = scene.ui.find_child("ExportSongCard", true, false)
+	check(import_card != null and import_card.is_visible_in_tree(), "Import song card button is visible with tools collapsed")
+	check(export_card != null and export_card.is_visible_in_tree(), "Export card button is visible with tools collapsed")
+	check(export_card.disabled, "Built-in demo cannot export a YouTube card")
 	var dock = scene.ui.find_child("PlayerDock", true, false)
 	var stage = scene.ui.find_child("MusicStage", true, false)
 	check(dock != null and stage != null, "Cabinet separates music stage and player dock")

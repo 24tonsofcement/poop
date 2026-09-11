@@ -297,7 +297,7 @@ def attach_video(source, library, temp, job):
     atomic_json(metadata, pack)
     return [str(folder)], []
 
-def import_youtube(url, library, temp, job):
+def download_youtube_audio(url, temp, job):
     url = validate_youtube(url)
     work = temp / 'pack'
     work.mkdir()
@@ -314,6 +314,12 @@ def import_youtube(url, library, temp, job):
     if len(audio) != 1:
         raise ValueError('Audio download did not produce a single complete file')
     duration = convert_audio(audio[0], work / 'audio.wav', job, 20)
+    return work, duration, info
+
+
+def import_youtube(url, library, temp, job):
+    url = validate_youtube(url)
+    work, duration, info = download_youtube_audio(url, temp, job)
     charts = instrument_charts(work / 'audio.wav', temp, job)
     pack = {'schema': 1, 'id': 'yt-' + info['id'], 'category': 'YouTube', 'title': info.get('title', 'YouTube import'),
             'artist': info.get('uploader', 'Unknown'), 'audio': 'audio.wav', 'duration': duration,
@@ -324,6 +330,38 @@ def import_youtube(url, library, temp, job):
         pack['video'] = 'background.ogv'
     job.update('Saving generated charts…', 99)
     return [str(commit_pack(work, library, pack))], warnings
+
+def import_card(source, library, temp, job):
+    from song_card import decode, read_bounded
+    pack = decode(read_bounded(source))
+    target = library / pack['id']
+    if (target / 'song.json').is_file() and (target / 'audio.wav').is_file():
+        return [str(target)], []
+    work, duration, info = download_youtube_audio(pack['source'], temp, job)
+    if abs(duration - pack['duration']) > 0.5:
+        raise ValueError('YouTube audio duration has changed; these shared charts may no longer sync. Import stopped.')
+    warnings = optional_background(pack['source'], work / 'background.ogv', temp, job)
+    if (work / 'background.ogv').is_file(): pack['video'] = 'background.ogv'
+    job.update('Saving the shared charts unchanged…', 99)
+    return [str(commit_pack(work, library, pack))], warnings
+
+
+def export_card(request, job):
+    from song_card import encode, read_bounded, render_card
+    job.update('Embedding charts into the thumbnail…', 30)
+    output = Path(request['destination']).resolve()
+    if output.suffix.lower() != '.png': raise ValueError('Choose a .png filename.')
+    thumbnail = render_card(read_bounded(request['thumbnail']), request['song'].get('title', 'YouTube song'))
+    data = encode(thumbnail, request['song'])
+    temporary = output.with_name(output.name + '.' + uuid.uuid4().hex + '.tmp')
+    try:
+        temporary.write_bytes(data)
+        job.update('Saving song card…', 99)
+        os.replace(temporary, output)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return [], []
+
 
 def regenerate_song(source, library, temp, job):
     folder = Path(source).resolve()
@@ -384,7 +422,11 @@ def main():
         library.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='.import-', dir=library) as tmp:
             job.update('Preparing import…', 1)
-            if request['kind'] == 'youtube':
+            if request['kind'] == 'card_import':
+                paths, warnings = import_card(request['source'], library, Path(tmp), job)
+            elif request['kind'] == 'card_export':
+                paths, warnings = export_card(request, job)
+            elif request['kind'] == 'youtube':
                 paths, warnings = import_youtube(request['source'], library, Path(tmp), job)
             elif request['kind'] == 'hype':
                 paths, warnings = analyze_song_hype(request['source'], library, Path(tmp), job)
@@ -396,7 +438,7 @@ def main():
                 paths, warnings = import_osu(Path(request['source']).resolve(), library, Path(tmp), job)
             else:
                 raise ValueError('Unknown import kind')
-        atomic_json(job.result, {'state': 'done', 'message': 'Import complete', 'progress': 100, 'paths': paths, 'warnings': warnings})
+        atomic_json(job.result, {'state': 'done', 'message': ('Song card exported: ' + request['destination']) if request['kind'] == 'card_export' else 'Import complete', 'progress': 100, 'paths': paths, 'warnings': warnings})
     except Exception as error:
         atomic_json(job.result, {'state': 'error', 'message': str(error), 'progress': 0})
         traceback.print_exc()

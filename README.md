@@ -1,3 +1,11 @@
+## PNG data cards and fullscreen fix — 1.6.0
+
+Open **Song Library → Export card** for a YouTube song. The card shows its thumbnail, title, and DATA CARD label. Charts for every instrument and difficulty, timing and hype metadata are embedded with the canonical YouTube link. Audio/video are not included. Send the original PNG as a file/document; re-encoding it as a photo may remove its chart data.
+
+Use **Import song card**, or drop one PNG onto the menu. The receiving computer downloads audio and attempts the video, then installs the shared charts without generating replacements. If video is unavailable, audio remains playable; use Download video later. Unavailable audio or a changed duration stops installation. Different chart variants get separate library entries; importing the same card again reuses the installed copy. Thumbnail export requires its artwork to have loaded.
+
+Fullscreen now expands the canvas to the display aspect ratio instead of adding side bars. Layout checks cover 16:9, ultrawide, and 5:4.
+
 ## Midnight cabinet redesign — 1.5.0
 
 The music carousel now occupies a dedicated stage beside a scrollable player-entry dock. Library filters sit above the stage, records below it, and import tools live in an expandable bottom drawer. The early-2000s cabinet direction uses smoked blue panels, metallic trim, amber indicators, segmented meters, a chrome CD and beveled notes. Existing settings, multiplayer, previews, calibration and the carousel overlap fix remain intact.
