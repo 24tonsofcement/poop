@@ -2168,7 +2168,7 @@ func hype_shake() -> Vector2:
 	var pulse: float = 0.0
 	for run in runs:
 		if int(run.get("hype_index", -1)) >= 0:
-			pulse = maxf(pulse, Hype.beat_pulse(chart_time(), run.timing))
+			pulse = maxf(pulse, Hype.beat_pulse(time_s, run.timing))
 	var strength: float = 6.0 * float(hype_settings.shake) * pulse
 	return Vector2(sin(time_s * 73.0), cos(time_s * 59.0)) * strength
 
@@ -2176,7 +2176,7 @@ func draw_hype(run: Dictionary, x: float, width: float, top: float, hit: float, 
 	var index: int = int(run.get("hype_index", -1))
 	if index < 0:
 		return
-	var pulse: float = 0.0 if paused else Hype.beat_pulse(chart_time(), run.timing)
+	var pulse: float = 0.0 if paused else Hype.beat_pulse(time_s, run.timing)
 	var bonus: float = hype_multiplier(run)
 	var kind: String = str(run.hype_sections[index].kind).to_upper()
 	text_at(Vector2(x + 8, hit + 65), kind + ("  %.1f× BONUS" % bonus if bonus > 1.0 else "  BONUS LOST" if bool(run.get("hype_broken", false)) else "  HYPE"), 15, tint, width - 16)
