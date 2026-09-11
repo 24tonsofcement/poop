@@ -15,6 +15,7 @@ import urllib.parse
 import uuid
 import zipfile
 from charting import generate_charts
+from hype import detect_hype
 from timing import estimate_timing, parse_timing_points
 
 BASE = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
@@ -199,6 +200,7 @@ def import_osu(source, library, temp, job):
                 'source': 'osu!mania', 'credits': meta.get('Metadata.Creator', '')}
         if max(n['end'] for notes in group['charts'].values() for n in notes) > duration + 2:
             raise ValueError('Beatmap notes extend beyond its audio')
+        pack['hype'] = detect_hype(work / 'audio.wav')
         imported.append(str(commit_pack(work, library, pack)))
     return imported, skipped
 
@@ -213,13 +215,17 @@ def validate_youtube(url):
         raise ValueError('Use an individual YouTube video, not a playlist or channel')
     return 'https://www.youtube.com/watch?v=' + video
 
-def instrument_charts(audio_path, temp, job):
+def separate_stems(audio_path, temp, job):
     separated = temp / 'stems'
     if getattr(sys, 'frozen', False):
         command = [sys.executable, '--separate', str(audio_path), str(separated)]
     else:
         command = [sys.executable, str(Path(__file__).resolve()), '--separate', str(audio_path), str(separated)]
     job.run(command, 'Separating drums, bass, vocals and accompaniment (CPU; may take several minutes)…', 30)
+    return separated
+
+def instrument_charts(audio_path, temp, job):
+    separated = separate_stems(audio_path, temp, job)
     charts = {}
     for index, stem in enumerate(['drums', 'bass', 'vocals', 'other']):
         job.update('Generating four difficulties: ' + stem, 60 + index * 9)
@@ -230,6 +236,11 @@ def instrument_charts(audio_path, temp, job):
     if not any(notes for diffs in charts.values() for notes in diffs.values()):
         raise ValueError('No playable onsets detected')
     return charts
+
+def song_hype(audio_path, temp, job):
+    job.update('Detecting energy lifts, recurring choruses and instrument solos...', 93)
+    stems = temp / 'stems' / 'htdemucs' / 'audio'
+    return detect_hype(audio_path, {('Accompaniment' if name == 'other' else name.title()): stems / (name + '.wav') for name in ['drums', 'bass', 'vocals', 'other']})
 
 def encode_background(source, output, job):
     job.run([binary('ffmpeg'), '-nostdin', '-y', '-i', source, '-t', str(MAX_SECONDS),
@@ -307,6 +318,7 @@ def import_youtube(url, library, temp, job):
     pack = {'schema': 1, 'id': 'yt-' + info['id'], 'category': 'YouTube', 'title': info.get('title', 'YouTube import'),
             'artist': info.get('uploader', 'Unknown'), 'audio': 'audio.wav', 'duration': duration,
             'charts': charts, 'timing': estimate_timing(work / 'audio.wav'), 'source': url, 'generator': 'htdemucs + consistent voice + recurring riffs v7'}
+    pack['hype'] = song_hype(work / 'audio.wav', temp, job)
     warnings = optional_background(url, work / 'background.ogv', temp, job)
     if (work / 'background.ogv').is_file():
         pack['video'] = 'background.ogv'
@@ -327,12 +339,33 @@ def regenerate_song(source, library, temp, job):
         raise ValueError('Cached audio is missing')
     pack['charts'] = instrument_charts(audio_path, temp, job)
     pack['timing'] = estimate_timing(audio_path)
+    pack['hype'] = song_hype(audio_path, temp, job)
     pack['generator'] = 'htdemucs + consistent voice + recurring riffs v7'
     job.update('Saving updated charts...', 99)
     if pack_file.read_bytes() != original:
         raise ValueError('Song changed during generation; retry')
     # Preserve the last charts for manual recovery; audio and song identity stay put.
     atomic_json(folder / 'song.before-holds.json', json.loads(original))
+    atomic_json(pack_file, pack)
+    return [str(folder)], []
+
+def analyze_song_hype(source, library, temp, job):
+    folder = Path(source).resolve()
+    if not folder.is_relative_to(library.resolve()) or folder == library.resolve():
+        raise ValueError('Choose an imported song in the library')
+    pack_file = folder / 'song.json'
+    original = pack_file.read_bytes()
+    pack = json.loads(original)
+    if pack.get('audio') != 'audio.wav':
+        raise ValueError('Unsupported song audio')
+    audio = folder / 'audio.wav'
+    if pack.get('category') == 'YouTube':
+        separate_stems(audio, temp, job)
+        pack['hype'] = song_hype(audio, temp, job)
+    else:
+        pack['hype'] = detect_hype(audio)
+    if pack_file.read_bytes() != original:
+        raise ValueError('Song changed during analysis; retry')
     atomic_json(pack_file, pack)
     return [str(folder)], []
 
@@ -353,6 +386,8 @@ def main():
             job.update('Preparing import…', 1)
             if request['kind'] == 'youtube':
                 paths, warnings = import_youtube(request['source'], library, Path(tmp), job)
+            elif request['kind'] == 'hype':
+                paths, warnings = analyze_song_hype(request['source'], library, Path(tmp), job)
             elif request['kind'] == 'video':
                 paths, warnings = attach_video(request['source'], library, Path(tmp), job)
             elif request['kind'] == 'regenerate':

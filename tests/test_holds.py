@@ -76,7 +76,7 @@ class HoldTests(unittest.TestCase):
             (song / 'audio.wav').write_bytes(b'cached audio fixture')
             generated = {'Bass': {'Easy': [{'t': 1., 'end': 2., 'lane': 0}]}}
             job = Job(root / 'result.json')
-            with patch('worker.instrument_charts', return_value=generated), patch('worker.estimate_timing', return_value=[{'t': 0., 'beat_length': .5, 'meter': 4}]):
+            with patch('worker.song_hype', return_value={'global': [], 'instruments': {}}), patch('worker.instrument_charts', return_value=generated), patch('worker.estimate_timing', return_value=[{'t': 0., 'beat_length': .5, 'meter': 4}]):
                 regenerate_song(str(song), root, root, job)
             self.assertEqual((song / 'audio.wav').read_bytes(), b'cached audio fixture')
             self.assertEqual(json.loads(file.read_text())['id'], original['id'])

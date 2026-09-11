@@ -147,6 +147,7 @@ func run_checks() -> void:
 	check(scene.runs[0].lane_flash[0] > 0, "Successful hit flashes its lane")
 	scene.key_hit(0, 0, false)
 	check(scene.runs[0].judged == 1, "Hold tail cannot score twice")
+	run_hype_calibration_checks(scene)
 	run_hold_bar_checks(scene)
 	run_arcade_checks(scene)
 	await run_video_checks(scene)
@@ -432,3 +433,45 @@ func check_menu_polish(scene) -> void:
 	scene.selected = saved_song
 	scene.save_settings()
 	scene.show_menu()
+
+func run_hype_calibration_checks(scene) -> void:
+	var logic = load("res://game/hype.gd")
+	var calibration = load("res://game/calibration.gd")
+	var fixture: Dictionary = {"hype": {"global": [{"start": 2, "end": 6, "confidence": 0.9, "kind": "drop"}], "instruments": {"Bass": [{"start": 9, "end": 12, "confidence": 0.9, "kind": "solo"}]}}}
+	var bass: Array = logic.sections(fixture, "Bass", 0.5)
+	check(bass.size() == 2 and logic.sections(fixture, "Drums", 0.5).size() == 1, "Solo hype applies only to its instrument")
+	var state: Dictionary = {"hype_sections": bass}
+	logic.refresh(state, 2.0)
+	check(logic.multiplier(state, true, 2.0) == 2.0, "Hype begins at section boundary")
+	state.hype_broken = true
+	logic.refresh(state, 4.0)
+	check(logic.multiplier(state, true, 2.0) == 1.0, "Broken bonus stays off for rest of section")
+	logic.refresh(state, 9.0)
+	check(logic.multiplier(state, true, 2.0) == 2.0, "Next section restores eligibility")
+	check(logic.multiplier(state, false, 2.0) == 1.0, "Hype scoring can be disabled")
+	var samples: Array = []
+	for i in range(20):
+		samples.append(30.0)
+	samples.append(-150.0)
+	var stats: Dictionary = calibration.summarize(samples, 10.0)
+	check(stats.ready and stats.recommended == 40.0, "Late hits increase offset; median rejects an outlier")
+	samples.fill(-25.0)
+	check(calibration.summarize(samples, 10.0).recommended == -15.0, "Early hits reduce offset")
+	check(not calibration.summarize([10.0], 0.0).ready, "Too few hits cannot auto calibrate")
+	# Exercise actual scoring and miss/recovery semantics in a real game run.
+	scene.start_game()
+	scene.time_s = 3.0
+	var run: Dictionary = scene.runs[0]
+	run.hype_sections = bass
+	run.score = 0
+	run.combo = 0
+	var n: Dictionary = {"t": 3.0, "end": 3.0, "lane": 0, "state": 0}
+	scene.judge(0, n, 300)
+	check(run.score == 600, "Perfect hit receives hype points")
+	scene.judge(0, {"t": 3.1, "end": 3.1, "lane": 1, "state": 0}, 0)
+	scene.judge(0, {"t": 3.2, "end": 3.2, "lane": 2, "state": 0}, 300)
+	check(run.score == 900 and run.hype_broken, "A miss removes only the remaining hype bonus")
+	run.hype_sections = []
+	scene.show_settings()
+	for key in ["bonus", "sensitivity", "glow", "rings", "shake"]:
+		check(scene.ui.find_child("Hype_" + key, true, false) is HSlider, "Hype setting exists: " + key)

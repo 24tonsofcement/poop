@@ -5,6 +5,11 @@ const LANE_COLORS = [Color("24edff"), Color("ff48bb"), Color("ffe354"), Color("9
 const WHITE = Color("f3f6ff")
 const MUTED = Color("abb4e0")
 const WINDOW = 0.160
+const Calibration = preload("res://game/calibration.gd")
+var last_timing: Array = []
+const Hype = preload("res://game/hype.gd")
+var hype_settings: Dictionary = {"enabled": true, "bonus": 2.0, "sensitivity": 0.5, "glow": 0.6, "rings": 0.6, "shake": 0.3}
+
 const ScoreStore = preload("res://game/score_store.gd")
 const NOTE_TEXTURES = {"Circle": preload("res://game/notes/circle.svg"), "Arrows": preload("res://game/notes/arrow.svg"), "Square": preload("res://game/notes/square.svg")}
 const NOTE_STYLES = ["Bar", "Circle", "Arrows", "Square"]
@@ -211,6 +216,10 @@ func apply_theme() -> void:
 	theme = t
 
 func load_settings() -> void:
+	if FileAccess.file_exists("user://last-timing.json"):
+		var parser = JSON.new()
+		if parser.parse(FileAccess.get_file_as_string("user://last-timing.json")) == OK and parser.data is Array:
+			last_timing = parser.data
 	if FileAccess.file_exists("user://settings.json"):
 		var data = JSON.parse_string(FileAccess.get_file_as_string("user://settings.json"))
 		if data is Dictionary:
@@ -231,6 +240,13 @@ func load_settings() -> void:
 			if saved_effects is Dictionary:
 				for effect in visual_effects:
 					visual_effects[effect] = bool(saved_effects.get(effect, visual_effects[effect]))
+			var saved_hype = data.get("hype_settings", {})
+			if saved_hype is Dictionary:
+				hype_settings.enabled = bool(saved_hype.get("enabled", true))
+				for key in ["bonus", "sensitivity", "glow", "rings", "shake"]:
+					var amount: float = float(saved_hype.get(key, hype_settings[key]))
+					if is_finite(amount):
+						hype_settings[key] = clampf(amount, 1.0 if key == "bonus" else 0.0, 3.0 if key == "bonus" else 1.0)
 			players_count = clampi(int(data.get("players_count", 1)), 1, 4)
 			highway_opacity = clampf(float(data.get("highway_opacity", 0.82)), 0, 1)
 			video_opacity = clampf(float(data.get("video_opacity", 0.22)), 0, 1.0)
@@ -264,7 +280,7 @@ func load_settings() -> void:
 func save_settings() -> void:
 	var f = FileAccess.open("user://settings.json", FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
+		f.store_string(JSON.stringify({"hype_settings": hype_settings, "music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
 
 func valid_song(data) -> bool:
 	if not data is Dictionary or data.get("schema", 0) != 1 or not data.get("charts") is Dictionary:
@@ -780,6 +796,7 @@ func show_settings() -> void:
 	label_into(root, "SETTINGS", 32, COLORS[0])
 	button_into(root, "Back to songs", show_menu)
 	var settings = box_into(root)
+	add_calibration_panel(settings)
 	label_into(settings, "TIMING AND AUDIO", 16, COLORS[2])
 	label_into(settings, "Offset (ms)", 14)
 	var offset = SpinBox.new()
@@ -807,6 +824,22 @@ func show_settings() -> void:
 	button_into(test_sounds, "Test hit", func(): play_feedback(false))
 	button_into(test_sounds, "Test miss", func(): play_feedback(true))
 	label_into(settings, "Set hit or miss volume to 0% to mute that sound.", 14, MUTED)
+	var hype_panel = box_into(root)
+	label_into(hype_panel, "HYPE MOMENTS", 20, COLORS[0])
+	var hype_toggle = CheckButton.new()
+	hype_toggle.text = "Enable hype scoring bonus"
+	hype_toggle.button_pressed = bool(hype_settings.enabled)
+	hype_toggle.toggled.connect(func(value):
+		hype_settings.enabled = value
+		save_settings())
+	hype_panel.add_child(hype_toggle)
+	for item in [["Bonus multiplier", "bonus"], ["Detection sensitivity", "sensitivity"], ["Beat glow intensity", "glow"], ["Beat ring intensity", "rings"], ["Screen shake intensity", "shake"]]:
+		add_hype_slider(hype_panel, str(item[0]), str(item[1]))
+	label_into(hype_panel, "Effect sliders at 0 turn that effect off. A miss removes the bonus until the next hype section.", 14, MUTED)
+	label_into(hype_panel, "Online scoring uses standard 2× hype and 50% sensitivity. Personal bests separate scoring settings.", 14, MUTED)
+	if not selected.is_empty() and not str(selected.get("folder", "")).begins_with("res://") and not online.connected():
+		button_into(hype_panel, "Analyze hype for selected song", func(): start_import("hype", str(selected.folder)))
+	label_into(hype_panel, "Analyze older imports here; charts stay unchanged. New imports include hype automatically.", 14, MUTED)
 	var visuals = box_into(root)
 	label_into(visuals, "EFFECTS", 16, COLORS[1])
 	var effects_grid = GridContainer.new()
@@ -1067,7 +1100,7 @@ func start_game() -> void:
 			n["points"] = 0
 			n["hold_ticks"] = 0
 		run_length = maxf(run_length, float(notes[-1].end) + offset_ms / 1000.0)
-		runs.append({"notes": notes, "timing": timing_for(str(choices[p].instrument), str(choices[p].difficulty)), "chart_key": chart_key_for(str(choices[p].instrument), str(choices[p].difficulty)), "profile": profile_names[p], "raw_score": 0, "multiplier": 1, "combo_pulse": 0.0, "milestone": "", "new_best": false, "save_error": "", "cursor": 0, "score": 0, "combo": 0, "best": 0, "judged": 0,
+		runs.append({"timing_samples": [], "start_offset": offset_ms, "hype_sections": Hype.sections(selected, str(choices[p].instrument), hype_sensitivity()), "hype_index": -1, "hype_broken": false, "notes": notes, "timing": timing_for(str(choices[p].instrument), str(choices[p].difficulty)), "chart_key": chart_key_for(str(choices[p].instrument), str(choices[p].difficulty)), "profile": profile_names[p], "raw_score": 0, "multiplier": 1, "combo_pulse": 0.0, "milestone": "", "new_best": false, "save_error": "", "cursor": 0, "score": 0, "combo": 0, "best": 0, "judged": 0,
 			"perfect": 0, "great": 0, "good": 0, "miss": 0, "flash": 0.0, "message": "READY", "held": [false, false, false, false], "lane_flash": [0.0, 0.0, 0.0, 0.0], "effects": []})
 	time_s = online.server_time() - online_start_at if online_game else -2.0
 	playing = false
@@ -1138,8 +1171,10 @@ func award_hold_bars(p: int, n: Dictionary, now: float) -> void:
 	var previous: int = int(n.get("hold_ticks", 0))
 	if earned > previous:
 		n["hold_ticks"] = earned
-		r.score += (earned - previous) * 300 * int(r.multiplier)
-		r.message = "HOLD  +%d" % ((earned - previous) * 300 * int(r.multiplier))
+		Hype.refresh(r, now)
+		var awarded: int = int(round((earned - previous) * 300 * int(r.multiplier) * hype_multiplier(r)))
+		r.score += awarded
+		r.message = "HOLD  +%d" % awarded
 		r.flash = 0.4
 		emit_hit_effect(p, int(n.lane), 300)
 
@@ -1171,15 +1206,18 @@ func judge(p: int, n: Dictionary, points: int) -> void:
 	r.judged += 1
 	play_feedback(points == 0)
 	r.raw_score += points
+	Hype.refresh(r, chart_time())
 	var recovery: bool = bool(n.get("recovery", false))
 	if points == 0:
 		r.combo = 0
+		if int(r.get("hype_index", -1)) >= 0:
+			r["hype_broken"] = true
 	elif not recovery:
 		r.combo += 1
 	r.multiplier = multiplier_for(int(r.combo))
 	# A recovery tail preserves the streak but cannot farm extra score/combo.
 	if not recovery:
-		r.score += points * int(r.multiplier)
+		r.score += int(round(points * int(r.multiplier) * hype_multiplier(r)))
 	r.best = maxi(r.best, r.combo)
 	if points == 0:
 		r.combo_pulse = 0.0
@@ -1213,6 +1251,8 @@ func key_hit(p: int, lane: int, pressed: bool) -> void:
 			break
 		if n.lane != lane or n.state != 0 or absf(float(n.t) - now) > WINDOW:
 			continue
+		if not bool(n.get("recovery", false)):
+			r.timing_samples.append((now - float(n.t)) * 1000.0)
 		var error: float = absf(float(n.t) - now)
 		var points: int = 300 if error <= 0.045 else 200 if error <= 0.090 else 100
 		if float(n.end) > float(n.t):
@@ -1307,7 +1347,7 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
-	music_visualizer.sample(delta, screen == "game" and playing and not paused and (visual_effects.audio_visualizer or visual_effects.bass_glow))
+	music_visualizer.sample(delta, screen == "game" and playing and not paused and (visual_effects.audio_visualizer or visual_effects.bass_glow or float(hype_settings.glow) > 0))
 	process_preview(delta)
 	if online_game and not runs.is_empty() and screen in ["game", "results"]:
 		var local_run: Dictionary = runs[0]
@@ -1337,6 +1377,7 @@ func _process(delta: float) -> void:
 	var now: float = chart_time()
 	for p in range(players_count):
 		var r: Dictionary = runs[p]
+		Hype.refresh(r, now)
 		r.flash = maxf(0, r.flash - delta)
 		r.combo_pulse = maxf(0, r.combo_pulse - delta)
 		for lane in range(4):
@@ -1428,7 +1469,11 @@ func cap_generated_holds(song: Dictionary) -> void:
 
 func chart_key_for(instrument: String, difficulty: String) -> String:
 	var note_hash: String = JSON.stringify(selected.charts[instrument][difficulty]).sha256_text()
-	return JSON.stringify(["bar-bonus-recovery-v3", selected.id, instrument, difficulty, note_hash, timing_for(instrument, difficulty)]).sha256_text()
+	var base: Array = ["bar-bonus-recovery-v3", selected.id, instrument, difficulty, note_hash, timing_for(instrument, difficulty)]
+	var hype_ranges: Array = Hype.sections(selected, instrument, hype_sensitivity())
+	if hype_enabled() and not hype_ranges.is_empty():
+		base.append(["hype-v1", hype_bonus(), hype_ranges])
+	return JSON.stringify(base).sha256_text()
 
 func record_completed_runs() -> void:
 	if results_recorded:
@@ -1530,6 +1575,7 @@ func show_leaderboard() -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	draw_set_transform(hype_shake())
 	draw_arcade_backdrop()
 	if screen != "game":
 		return
@@ -1556,6 +1602,7 @@ func _draw() -> void:
 		text_at(Vector2(x, 127), "%s · %.1f%%" % [choices[p].difficulty, acc], 15, MUTED, track_w)
 		text_at(Vector2(x, 153), "%06d   %d streak   %d×" % [r.score, r.combo, r.multiplier], 17 if players_count >= 3 else 21, WHITE)
 		road_quad(x, track_w, top, hit, 0, 4, top, hit + 12, Color(Color("090d29"), highway_opacity))
+		draw_hype(r, x, track_w, top, hit, COLORS[p])
 		if visual_effects.combo_glow and r.multiplier > 1:
 			road_quad(x, track_w, top, hit, 0, 4, top, hit, Color(COLORS[p], highway_opacity * 0.025 * (int(r.multiplier) - 1)))
 		if visual_effects.combo_glow and r.combo_pulse > 0:
@@ -1644,6 +1691,15 @@ func _draw() -> void:
 	text_at(Vector2(28, h - 16), "ESC  Leave online round" if online_game else "ESC  Pause       F5  Restart", 13, MUTED)
 
 func show_results() -> void:
+	last_timing.clear()
+	for run in runs:
+		var summary: Dictionary = Calibration.summarize(run.get("timing_samples", []), float(run.get("start_offset", offset_ms)))
+		summary["profile"] = str(run.profile)
+		summary["song"] = str(selected.title)
+		last_timing.append(summary)
+	var timing_file = FileAccess.open("user://last-timing.json", FileAccess.WRITE)
+	if timing_file:
+		timing_file.store_string(JSON.stringify(last_timing))
 	record_completed_runs()
 	screen = "results"
 	audio.stop()
@@ -1701,7 +1757,7 @@ func open_online() -> void:
 			last_message = "Could not read the selected song for multiplayer."
 			show_menu()
 			return
-		online_fingerprint = JSON.stringify(["bar-bonus-recovery-v3", selected.charts, selected.get("timing", []), audio_hash]).sha256_text()
+		online_fingerprint = JSON.stringify(["hype-v1", selected.charts, selected.get("timing", []), selected.get("hype", {}), audio_hash]).sha256_text()
 	show_online_menu()
 
 func show_online_menu() -> void:
@@ -1923,7 +1979,7 @@ func install_online_pack(folder: String) -> void:
 		update_online_lobby()
 		return
 	var meta: Dictionary = parser.data
-	var fingerprint: String = JSON.stringify(["bar-bonus-recovery-v3", meta.charts, meta.get("timing", []), FileAccess.get_sha256(folder.path_join("audio.wav"))]).sha256_text()
+	var fingerprint: String = JSON.stringify(["hype-v1", meta.charts, meta.get("timing", []), meta.get("hype", {}), FileAccess.get_sha256(folder.path_join("audio.wav"))]).sha256_text()
 	if fingerprint != str(online.state.get("song", "")):
 		online_message = "Downloaded song does not match the host. Retry the transfer."
 		update_online_lobby()
@@ -2078,3 +2134,76 @@ func draw_song_visualizer(highway_start: float) -> void:
 			draw_rect(Rect2(x, baseline - bar_height, maxf(1.0, step - 3.0), bar_height), Color(tint, 0.25 + energy * 0.45))
 			if energy > 0.01:
 				draw_rect(Rect2(x, baseline - bar_height, maxf(1.0, step - 3.0), 2.0), Color(WHITE, energy * 0.7))
+
+func hype_enabled() -> bool:
+	return true if online.connected() else bool(hype_settings.enabled)
+
+func hype_bonus() -> float:
+	return 2.0 if online.connected() else float(hype_settings.bonus)
+
+func hype_sensitivity() -> float:
+	return 0.5 if online.connected() else float(hype_settings.sensitivity)
+
+func hype_multiplier(run: Dictionary) -> float:
+	return Hype.multiplier(run, hype_enabled(), hype_bonus())
+
+func add_hype_slider(parent: Control, title: String, key: String) -> void:
+	var caption = label_into(parent, title + ": " + str(hype_settings[key]), 15)
+	var slider = HSlider.new()
+	slider.name = "Hype_" + key
+	slider.custom_minimum_size.x = 340
+	slider.min_value = 1.0 if key == "bonus" else 0.0
+	slider.max_value = 3.0 if key == "bonus" else 1.0
+	slider.step = 0.1 if key == "bonus" else 0.05
+	slider.value = float(hype_settings[key])
+	slider.value_changed.connect(func(value):
+		hype_settings[key] = value
+		caption.text = title + ": " + ("%.1f×" % value if key == "bonus" else "%d%%" % int(value * 100))
+		save_settings())
+	parent.add_child(slider)
+
+func hype_shake() -> Vector2:
+	if screen != "game" or paused or not playing:
+		return Vector2.ZERO
+	var pulse: float = 0.0
+	for run in runs:
+		if int(run.get("hype_index", -1)) >= 0:
+			pulse = maxf(pulse, Hype.beat_pulse(chart_time(), run.timing))
+	var strength: float = 6.0 * float(hype_settings.shake) * pulse
+	return Vector2(sin(time_s * 73.0), cos(time_s * 59.0)) * strength
+
+func draw_hype(run: Dictionary, x: float, width: float, top: float, hit: float, tint: Color) -> void:
+	var index: int = int(run.get("hype_index", -1))
+	if index < 0:
+		return
+	var pulse: float = 0.0 if paused else Hype.beat_pulse(chart_time(), run.timing)
+	var bonus: float = hype_multiplier(run)
+	var kind: String = str(run.hype_sections[index].kind).to_upper()
+	text_at(Vector2(x + 8, hit + 65), kind + ("  %.1f× BONUS" % bonus if bonus > 1.0 else "  BONUS LOST" if bool(run.get("hype_broken", false)) else "  HYPE"), 15, tint, width - 16)
+	var glow: float = float(hype_settings.glow) * pulse * (0.08 + music_visualizer.bass * 0.08)
+	road_quad(x, width, top, hit, 0, 4, top, hit, Color(tint, glow))
+	if float(hype_settings.rings) > 0 and not paused:
+		var radius: float = (1.0 - pulse) * width * 0.65 + 10.0
+		draw_arc(Vector2(x + width / 2, hit), radius, PI, TAU, 40, Color(tint, float(hype_settings.rings) * pulse * 0.6), 3.0, true)
+
+func add_calibration_panel(parent: Control) -> void:
+	label_into(parent, "CALIBRATE FROM LAST SONG", 20, COLORS[0])
+	label_into(parent, "Negative = early · Positive = late. The offset is shared; choose the player to calibrate for.", 14, MUTED)
+	if last_timing.is_empty():
+		label_into(parent, "Finish a song to record your timing. At least 12 hits are needed.", 14, MUTED)
+	for data in last_timing:
+		if not data is Dictionary:
+			continue
+		label_into(parent, str(data.get("profile", "Player")) + " / " + str(data.get("song", "Last song")), 16)
+		if not data.has("median"):
+			label_into(parent, "%d recorded hits — need at least 12." % int(data.get("count", 0)), 14, MUTED)
+			continue
+		label_into(parent, "%d early / %d late · Median %+.1f ms · Spread %.1f ms" % [int(data.early), int(data.late), float(data.median), float(data.spread)], 14, MUTED)
+		if bool(data.get("ready", false)):
+			var suggested: float = clampf(float(data.get("recommended", offset_ms)), -300, 300)
+			button_into(parent, "Apply recommended offset: %+.0f ms" % suggested, func():
+				offset_ms = suggested
+				save_settings()
+				show_settings())
+		else:
+			label_into(parent, "Timing was too variable for a reliable automatic adjustment. Try another song.", 14, MUTED)
