@@ -323,7 +323,7 @@ def import_youtube(url, library, temp, job):
     charts = instrument_charts(work / 'audio.wav', temp, job)
     pack = {'schema': 1, 'id': 'yt-' + info['id'], 'category': 'YouTube', 'title': info.get('title', 'YouTube import'),
             'artist': info.get('uploader', 'Unknown'), 'audio': 'audio.wav', 'duration': duration,
-            'charts': charts, 'timing': estimate_timing(work / 'audio.wav'), 'source': url, 'generator': 'htdemucs + consistent voice + recurring riffs v7'}
+            'charts': charts, 'timing': estimate_timing(work / 'audio.wav'), 'source': url, 'generator': 'htdemucs + phrase thinning + hand flow + supported chords v8'}
     pack['hype'] = song_hype(work / 'audio.wav', temp, job)
     warnings = optional_background(url, work / 'background.ogv', temp, job)
     if (work / 'background.ogv').is_file():
@@ -378,7 +378,7 @@ def regenerate_song(source, library, temp, job):
     pack['charts'] = instrument_charts(audio_path, temp, job)
     pack['timing'] = estimate_timing(audio_path)
     pack['hype'] = song_hype(audio_path, temp, job)
-    pack['generator'] = 'htdemucs + consistent voice + recurring riffs v7'
+    pack['generator'] = 'htdemucs + phrase thinning + hand flow + supported chords v8'
     job.update('Saving updated charts...', 99)
     if pack_file.read_bytes() != original:
         raise ValueError('Song changed during generation; retry')

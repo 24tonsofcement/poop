@@ -1,3 +1,9 @@
+## Sample-informed chart generation — 1.7.0
+
+Analyzed 169 native 4K charts from the supplied 47-set archive. Generator v8 adds conservative audio-supported doubles, fast finger-flow planning, and consistent simplification of repeated rhythmic gestures. The two-active-hold cap remains. New YouTube imports use the update; use **Regenerate chart** for existing songs. PNG card imports keep the shared charts unchanged.
+
+Read [the findings, measurements and limitations](research/mania-sample-study.md). This was a user-supplied sample, not a verified top-100 ranking.
+
 ## Card export refinements — 1.6.1
 
 Card export remembers the folder of the last successful export across restarts, and defaults to the selected song title followed by `.png`. Exported artwork shows the title and DATA CARD label without the game name. Existing cards remain compatible.

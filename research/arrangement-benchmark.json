@@ -1,0 +1,65 @@
+[
+  {
+    "title": "Flower Dance",
+    "segment": "20\u201350 seconds",
+    "input": "full mix, Other instrument (not isolated stems)",
+    "before": {
+      "notes": 107,
+      "chord_rows": 0,
+      "rows": 107,
+      "fast_same_lane_pairs": 8,
+      "fast_pairs": 43,
+      "seconds": 0.31
+    },
+    "after": {
+      "notes": 133,
+      "chord_rows": 26,
+      "rows": 107,
+      "fast_same_lane_pairs": 0,
+      "fast_pairs": 24,
+      "seconds": 0.29
+    }
+  },
+  {
+    "title": "Marble Soda",
+    "segment": "20\u201350 seconds",
+    "input": "full mix, Other instrument (not isolated stems)",
+    "before": {
+      "notes": 137,
+      "chord_rows": 0,
+      "rows": 137,
+      "fast_same_lane_pairs": 19,
+      "fast_pairs": 105,
+      "seconds": 0.32
+    },
+    "after": {
+      "notes": 168,
+      "chord_rows": 31,
+      "rows": 137,
+      "fast_same_lane_pairs": 0,
+      "fast_pairs": 57,
+      "seconds": 0.33
+    }
+  },
+  {
+    "title": "Hitorigoto",
+    "segment": "20\u201350 seconds",
+    "input": "full mix, Other instrument (not isolated stems)",
+    "before": {
+      "notes": 144,
+      "chord_rows": 0,
+      "rows": 144,
+      "fast_same_lane_pairs": 18,
+      "fast_pairs": 123,
+      "seconds": 0.32
+    },
+    "after": {
+      "notes": 169,
+      "chord_rows": 27,
+      "rows": 142,
+      "fast_same_lane_pairs": 1,
+      "fast_pairs": 74,
+      "seconds": 0.34
+    }
+  }
+]

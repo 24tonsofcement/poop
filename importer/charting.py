@@ -6,6 +6,7 @@ import heapq
 import hashlib
 import wave
 from pathlib import Path
+from arrangement import phrase_onsets, flowing_lanes, add_supported_chords
 import numpy as np
 from scipy.ndimage import median_filter
 from scipy.signal import find_peaks, resample_poly
@@ -111,25 +112,20 @@ def generate_charts(path: Path, allow_holds: bool = True, instrument: str = "mel
     pool = candidates
     # All levels draw from the same measured onsets; harder levels add density.
     for difficulty, (gap, percentile) in reversed(list(DIFFICULTIES.items())):
-        cutoff = float(np.percentile(scores[candidates], percentile)) if candidates else 1e9
-        chosen = []
-        for i in sorted(pool, key=lambda j: (-float(scores[j]), j)):
-            if scores[i] < cutoff:
-                continue
-            position = bisect.bisect_left(chosen, i)
-            neighbors = chosen[max(0, position - 1):position + 1]
-            if all(abs(i - j) * hop / sr >= gap for j in neighbors):
-                chosen.insert(position, i)
+        chosen = phrase_onsets(pool, scores, gap, percentile, hop / sr, candidates)
         pool = chosen
         # Thinning can accidentally select the same motif step repeatedly.
         # Re-pattern those long runs at this difficulty before building holds.
         chosen_lanes = phrase_patterns(chosen, lanes, scores, hop / sr, instrument)
+        chosen_lanes = flowing_lanes(chosen, chosen_lanes, hop / sr)
         chosen_lanes = reuse_riffs(chosen, chosen_lanes, pitches, hop / sr, frequencies, instrument)
         notes = []
         for i in sorted(chosen):
             # Centered FFT windows see attacks slightly early. Compensate half a hop.
             t = round(min(len(x) / sr, (i + .5) * hop / sr), 4)
             notes.append({'t': t, 'lane': chosen_lanes[i], 'end': t})
+        add_supported_chords(notes, sorted(chosen), scores, bands, voice_bins, voice_weights,
+                             frequencies, instrument, difficulty, hop / sr)
         if allow_holds:
             add_holds(notes, energies, hop / sr, len(x) / sr, difficulty)
             sparse_sustains(notes, pitches, candidates, hop / sr)

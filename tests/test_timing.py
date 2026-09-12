@@ -63,4 +63,6 @@ class TimingTests(unittest.TestCase):
             previous=heads
             for note in notes:
                 self.assertLess(min(abs(times-note['t'])),.035)
-            self.assertTrue(all(b['t']-a['t']>=DIFFICULTIES[difficulty][0]-.001 for a,b in zip(notes,notes[1:])))
+            ordered_heads = sorted(heads)
+            self.assertTrue(all(b-a>=DIFFICULTIES[difficulty][0]-.001 for a,b in zip(ordered_heads,ordered_heads[1:])))
+            self.assertEqual(len(notes), len({(n['t'], n['lane']) for n in notes}), 'Chords must use distinct lanes')
