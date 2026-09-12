@@ -201,8 +201,8 @@ func run_arcade_checks(scene) -> void:
 	scene.note_style = old_style
 	scene.save_settings()
 	var Store = load("res://game/score_store.gd")
-	for fixture in [[100.0, "SS"], [99.999, "S"], [95.001, "S"], [95.0, "A"], [90.001, "A"], [90.0, "B"], [80.001, "B"], [80.0, "C"], [70.001, "C"], [70.0, "D"], [0.0, "D"]]:
-		check(Store.grade(float(fixture[0])) == fixture[1], "Accuracy grade boundary " + str(fixture[0]))
+	for grade_case in [[100.0, "SS"], [99.999, "S"], [95.001, "S"], [95.0, "A"], [90.001, "A"], [90.0, "B"], [80.001, "B"], [80.0, "C"], [70.001, "C"], [70.0, "D"], [0.0, "D"]]:
+		check(Store.grade(float(grade_case[0])) == grade_case[1], "Accuracy grade boundary " + str(grade_case[0]))
 	var store = Store.new()
 	store.path = "user://score-smoke-%d.json" % Time.get_ticks_usec()
 	store.load_data()
