@@ -7,7 +7,7 @@ import zipfile
 
 def verify(folder):
     signatures = []
-    for name in ('drums', 'bass', 'vocals', 'other'):
+    for name in ('drums', 'bass', 'vocals', 'other', 'guitar', 'piano'):
         with wave.open(str(folder / (name + '.wav')), 'rb') as audio:
             if audio.getsampwidth() != 2 or audio.getcomptype() != 'NONE':
                 raise ValueError(name + ': expected PCM16 WAV')
@@ -16,7 +16,7 @@ def verify(folder):
             signatures.append((audio.getframerate(), audio.getnframes(), audio.getnchannels()))
     if len(set(signatures)) != 1:
         raise ValueError('Stems do not share the same timeline')
-    print('Verified all four PCM16 stems on the same timeline.')
+    print('Verified all six PCM16 stems on the same timeline.')
 
 def package(release, output):
     if not (release / 'PulseFour.exe').is_file() or not (release / 'importer' / 'PulseImporter.exe').is_file():

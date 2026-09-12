@@ -132,7 +132,7 @@ def generate_charts(path: Path, allow_holds: bool = True, instrument: str = "mel
                              frequencies, instrument, difficulty, hop / sr)
         if allow_holds:
             add_holds(notes, energies, hop / sr, len(x) / sr, difficulty)
-            sparse_sustains(notes, pitches, candidates, hop / sr)
+            sparse_sustains(notes, pitches, candidates, hop / sr, energies)
             limit_simultaneous_holds(notes, 2)
         result[difficulty] = notes
     return {d: result[d] for d in DIFFICULTIES}
@@ -219,22 +219,32 @@ def rhythmic_salience(envelope, candidates, frame_seconds):
     return scores
 
 
-def sparse_sustains(notes, pitches, attacks, frame_seconds):
+def sparse_sustains(notes, pitches, attacks, frame_seconds, energies=None):
     """Retain audible sustains without demanding a perfectly stationary pitch.
 
     Energy/release and same-lane overlap were checked by add_holds. Other-lane
     attacks no longer truncate sustained tones. Allow vibrato and gentle slides.
-    Prefer short sustains around 450ms, cap continuous tails at 1.6 seconds,
-    and distribute a modest hold budget across the song. The attacks argument remains for compatibility with previous callers.
+    Prefer short sustains around 450ms; longer tails require stronger pitch
+    and energy continuity evidence and have a separate rare-event budget. The attacks argument remains for compatibility with previous callers.
     """
     eligible = []
+    long_candidates = []
     for note in notes:
-        head, tail = note['t'], min(note['end'], note['t'] + 1.6)
+        head, tail = note['t'], note['end']
         a, b = round((head + .06) / frame_seconds), round(tail / frame_seconds)
         pitch = pitches[a:b]
         stable = len(pitch) > 0 and np.percentile(pitch, 90) - np.percentile(pitch, 10) <= max(4, float(np.median(pitch)) * .45)
         if tail - head >= .16 and stable:
-            eligible.append((tail - head, note, round(tail, 4)))
+            item = (tail - head, note, round(tail, 4))
+            if tail - head <= 1.6:
+                eligible.append(item)
+            elif energies is not None:
+                level = energies[a:b]
+                # Long holds require sustained energy and a stable voice over
+                # the entire audible tail; length alone never qualifies them.
+                steady_pitch = np.percentile(pitch, 95)-np.percentile(pitch, 5) <= max(1.5, float(np.median(pitch))*.12)
+                steady_level = len(level) > 0 and np.percentile(level, 10) >= max(.002, float(np.percentile(level, 90))*.55)
+                if steady_pitch and steady_level: long_candidates.append(item)
         note['end'] = head
     budget = max(1, math.ceil(len(notes) * .18)) if notes else 0
     # Round-robin through eight-second regions to spread holds across phrases.
@@ -244,6 +254,13 @@ def sparse_sustains(notes, pitches, attacks, frame_seconds):
     for region in regions.values():
         region.sort(key=lambda row: (abs(row[0] - .45), row[1]['t']))
     heads = []
+    # Reserve only a tiny portion of heads for genuinely sustained long tones.
+    long_budget = min(budget, math.ceil(len(notes)*.02))
+    for _, note, tail in sorted(long_candidates, key=lambda row: row[1]['t']):
+        if len(heads) >= long_budget: break
+        if all(abs(note['t'] - head) >= 8 for head in heads):
+            note['end'] = tail
+            heads.append(note['t'])
     while regions and len(heads) < budget:
         for key in list(regions):
             _, note, tail = regions[key].pop(0)

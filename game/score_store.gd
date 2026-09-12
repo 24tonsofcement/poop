@@ -103,3 +103,19 @@ func save_data() -> String:
 		return "Could not finish saving the leaderboard."
 	recovered_from_backup = false
 	return ""
+
+# osu!mania-style thresholds, applied to raw judgement accuracy only.
+static func grade(accuracy: float) -> String:
+	if not is_finite(accuracy):
+		return "D"
+	if accuracy >= 100.0:
+		return "SS"
+	if accuracy > 95.0:
+		return "S"
+	if accuracy > 90.0:
+		return "A"
+	if accuracy > 80.0:
+		return "B"
+	if accuracy > 70.0:
+		return "C"
+	return "D"

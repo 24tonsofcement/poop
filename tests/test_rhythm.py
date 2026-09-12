@@ -53,8 +53,8 @@ class RhythmTests(unittest.TestCase):
             previous=heads
         self.assertTrue(all(min(abs(n['t']-t) for n in charts['Expert']) < .035 for t in times))
 
-    def test_short_holds_survive_and_long_holds_are_bounded(self):
-        for length in [.18, .25, .5, 8.0]:
+    def test_short_holds_survive(self):
+        for length in [.18, .25, .5]:
             notes = [{'t': .1, 'end': .1+length, 'lane': 0}]
             sparse_sustains(notes, np.ones(1000)*20, [], .01)
             self.assertGreater(notes[0]['end'], notes[0]['t'])
@@ -75,3 +75,14 @@ class RhythmTests(unittest.TestCase):
         holds=[n for n in notes if n['end']>n['t']]
         self.assertTrue(holds)
         self.assertTrue(all(.16 <= n['end']-n['t'] < .35 for n in holds))
+
+    def test_long_sustains_need_continuous_evidence_and_are_rare(self):
+        notes=[{'t': float(i*10), 'end': float(i*10+6), 'lane': i%4} for i in range(50)]
+        sparse_sustains(notes, np.ones(51000)*20, [], .01, np.ones(51000)*.1)
+        holds=[n for n in notes if n['end']>n['t']]
+        self.assertEqual(len(holds), 1)
+        self.assertAlmostEqual(holds[0]['end']-holds[0]['t'], 6.)
+        for energy in [None, np.tile([.001,.1], 500)]:
+            notes=[{'t': .1, 'end': 6.1, 'lane': 0}]
+            sparse_sustains(notes, np.ones(1000)*20, [], .01, energy)
+            self.assertEqual(notes[0]['end'], notes[0]['t'])

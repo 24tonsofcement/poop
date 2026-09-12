@@ -101,7 +101,7 @@ P1: A S D F   P2: J K L ;   P3: Q W E R   P4: U I O P
 Click menu key buttons to rebind. Esc pauses. F5 restarts.
 Tap at the glowing line; hold long notes until their tails arrive.
 Import .osu with its audio, or .osz. Native 4-key osu!mania only.
-YouTube imports generate drums, bass, vocals and accompaniment charts at four difficulties.
+YouTube imports select audible vocals/drums and two leading remaining parts at six difficulties.
 YouTube needs internet; completed songs play offline. CPU generation can take several minutes.
 Positive timing offset makes notes arrive later. Use a rollover-capable keyboard for multiplayer.
 SOURCE-README.md contains full controls, technical notes and the original source-delivery context.
@@ -109,7 +109,11 @@ BUILD-STATUS.md records this build's checks and remaining manual tests.
 '@ | Set-Content (Join-Path $Release 'README.txt')
 $Licenses = Join-Path $Release 'licenses'
 Run $VenvPython @('scripts/collect_licenses.py', $Licenses)
-Copy-Item $FFRoot (Join-Path $Licenses 'ffmpeg-distribution') -Recurse -Force
+# Preserve FFmpeg notices/docs without bundling a second copy of its binaries.
+$FFNotices = Join-Path $Licenses 'ffmpeg-distribution'
+New-Item -ItemType Directory -Force $FFNotices | Out-Null
+Get-ChildItem $FFRoot -File | Where-Object { $_.Extension -in @('.txt','.md','.html') -or $_.Name -match 'LICENSE|COPYING|NOTICE' } | Copy-Item -Destination $FFNotices -Force
+if (Test-Path (Join-Path $FFRoot 'doc')) { Copy-Item (Join-Path $FFRoot 'doc') $FFNotices -Recurse -Force }
 Download 'https://raw.githubusercontent.com/godotengine/godot/4.4.1-stable/LICENSE.txt' (Join-Path $Licenses 'GODOT-LICENSE.txt')
 Download 'https://raw.githubusercontent.com/denoland/deno/main/LICENSE.md' (Join-Path $Licenses 'DENO-LICENSE.md')
 Download 'https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/LICENSE' (Join-Path $Licenses 'YT-DLP-LICENSE.txt')
@@ -118,7 +122,7 @@ Run (Join-Path $ImporterOut 'PulseImporter.exe') @('--help')
 $SmokeAudio = Join-Path $Build 'smoke.wav'
 Run (Join-Path $ToolsDir 'ffmpeg.exe') @('-nostdin','-y','-i',(Join-Path $PSScriptRoot 'game\demo\audio.wav'),'-t','3',$SmokeAudio)
 Run (Join-Path $ImporterOut 'PulseImporter.exe') @('--separate',$SmokeAudio,(Join-Path $Build 'smoke-stems'))
-if (!(Test-Path (Join-Path $Build 'smoke-stems\htdemucs\smoke\drums.wav'))) { throw 'Frozen stem smoke test failed' }
+Run $VenvPython @('scripts/finish_repair.py','verify',(Join-Path $Build 'smoke-stems\htdemucs_6s\smoke'))
 # Stop a stale lobby process so a previous run cannot lock the release folder.
 Get-Process -Name 'PulseLobby' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 400

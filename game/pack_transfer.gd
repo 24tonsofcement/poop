@@ -37,6 +37,10 @@ func begin_upload(song: Dictionary) -> void:
 		files.append({"name": "background.ogv"})
 	else:
 		meta.erase("video")
+	if song.get("background_image", "") == "background.png" and FileAccess.file_exists(source_folder.path_join("background.png")):
+		files.append({"name": "background.png"})
+	else:
+		meta.erase("background_image")
 	var cache: String = ProjectSettings.globalize_path("user://network-cache")
 	DirAccess.make_dir_recursive_absolute(cache)
 	metadata_path = cache.path_join("host-song.json")
@@ -96,7 +100,7 @@ func begin_download(manifest: Array) -> void:
 	files = manifest.duplicate(true)
 	var names: Array = []
 	for item in files:
-		if not item is Dictionary or not item.get("name", "") in ["song.json", "audio.wav", "background.ogv"] or item.get("name") in names:
+		if not item is Dictionary or not item.get("name", "") in ["song.json", "audio.wav", "background.ogv", "background.png"] or item.get("name") in names:
 			failed.emit("Invalid song download manifest.")
 			return
 		if int(item.get("size", 0)) <= 0 or int(item.size) > 268435456 or str(item.get("sha256", "")).length() != 64:
@@ -174,7 +178,7 @@ func fail(message: String) -> void:
 func cleanup_download() -> void:
 	if mode != "download" or not folder.begins_with(ProjectSettings.globalize_path("user://network-cache/download-")):
 		return
-	for name in ["song.json", "audio.wav", "background.ogv"]:
+	for name in ["song.json", "audio.wav", "background.ogv", "background.png"]:
 		var path: String = folder.path_join(name)
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)

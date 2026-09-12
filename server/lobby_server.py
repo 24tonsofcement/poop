@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PROTOCOL = 'pulse-online-1'
 MAX_BODY = 400000
-FILE_LIMITS = {"song.json": 32*1024*1024, "audio.wav": 256*1024*1024, "background.ogv": 256*1024*1024}
+FILE_LIMITS = {"song.json": 32*1024*1024, "audio.wav": 256*1024*1024, "background.ogv": 256*1024*1024, "background.png": 8*1024*1024}
 
 class LobbyError(Exception):
     pass
@@ -172,6 +172,7 @@ class LobbyService:
                 meta=json.loads((room['folder']/'song.json').read_text(encoding='utf-8'))
                 if not isinstance(meta,dict) or meta.get('schema')!=1 or not isinstance(meta.get('charts'),dict) or meta.get('audio')!='audio.wav':raise ValueError()
                 if meta.get('video') and (meta['video']!='background.ogv' or 'background.ogv' not in uploads):raise ValueError()
+                if meta.get('background_image') and (meta['background_image']!='background.png' or 'background.png' not in uploads):raise ValueError()
             except (ValueError,OSError):raise LobbyError('Invalid song metadata.')
             room['manifest']=[]
             for name,item in uploads.items():

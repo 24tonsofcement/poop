@@ -14,7 +14,14 @@ import traceback
 import urllib.parse
 import uuid
 import zipfile
+# This lightweight command also works with older persistent launchers.
+if __name__ == '__main__' and len(sys.argv) == 3 and sys.argv[1] == '--cleanup-old-versions':
+    from install_cleanup import cleanup_installed
+    cleanup_installed(sys.argv[2])
+    raise SystemExit(0)
+
 from charting import generate_charts
+from instruments import MODEL, SOURCES, LABELS, selected_paths
 from hype import detect_hype
 from timing import estimate_timing, parse_timing_points
 
@@ -149,9 +156,28 @@ def convert_audio(source, out, job, progress=20):
         raise ValueError('Songs are limited to 15 minutes')
     return duration
 
+def song_folder_name(pack):
+    import re
+    title = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', str(pack.get('title', 'Song'))).strip(' .')[:70].rstrip(' .') or 'Song'
+    if title.split('.')[0].upper() in {'CON','PRN','AUX','NUL',*[f'COM{i}' for i in range(1,10)],*[f'LPT{i}' for i in range(1,10)]}: title = '_' + title
+    return title + ' [' + hashlib.sha256(str(pack['id']).encode()).hexdigest()[:10] + ']'
+
+
+def existing_pack(library, identity):
+    for metadata in library.glob('*/song.json'):
+        if metadata.parent.name.startswith('.'): continue
+        try:
+            if json.loads(metadata.read_text(encoding='utf-8')).get('id') == identity:
+                return metadata.parent
+        except (ValueError, OSError): continue
+    return None
+
+
 def commit_pack(work, library, pack):
+    existing = existing_pack(library, pack['id'])
+    if existing is not None: return existing
     atomic_json(work / 'song.json', pack)
-    target = library / pack['id']
+    target = library / song_folder_name(pack)
     # Content-keyed imports are idempotent; a completed existing import wins.
     if target.exists():
         if (target / 'song.json').exists():
@@ -221,26 +247,28 @@ def separate_stems(audio_path, temp, job):
         command = [sys.executable, '--separate', str(audio_path), str(separated)]
     else:
         command = [sys.executable, str(Path(__file__).resolve()), '--separate', str(audio_path), str(separated)]
-    job.run(command, 'Separating drums, bass, vocals and accompaniment (CPU; may take several minutes)…', 30)
+    job.run(command, 'Separating vocals, drums, bass, guitar, piano and other instruments (CPU; may take several minutes)…', 30)
     return separated
 
 def instrument_charts(audio_path, temp, job):
     separated = separate_stems(audio_path, temp, job)
     charts = {}
-    for index, stem in enumerate(['drums', 'bass', 'vocals', 'other']):
-        job.update('Generating four difficulties: ' + stem, 60 + index * 9)
-        stem_path = separated / 'htdemucs' / 'audio' / (stem + '.wav')
-        if not stem_path.exists():
-            raise RuntimeError('Stem separation did not produce ' + stem)
-        charts['Accompaniment' if stem == 'other' else stem.title()] = generate_charts(stem_path, allow_holds=stem != 'drums', instrument=stem)
+    parts = selected_paths(audio_path, separated / MODEL / audio_path.stem)
+    for index, (stem, stem_path) in enumerate(parts.items()):
+        job.update('Generating charts: ' + LABELS[stem], 60 + index * 9)
+        generated = generate_charts(stem_path, allow_holds=stem != 'drums', instrument=stem)
+        if any(generated.values()): charts[LABELS[stem]] = generated
     if not any(notes for diffs in charts.values() for notes in diffs.values()):
         raise ValueError('No playable onsets detected')
     return charts
 
 def song_hype(audio_path, temp, job, charts=None):
     job.update('Matching energy lifts and instrument solos with chart activity...', 93)
-    stems = temp / 'stems' / 'htdemucs' / 'audio'
-    return detect_hype(audio_path, {('Accompaniment' if name == 'other' else name.title()): stems / (name + '.wav') for name in ['drums', 'bass', 'vocals', 'other']}, charts=charts)
+    stems = temp / 'stems' / MODEL / audio_path.stem
+    paths = {LABELS[name]: stems / (name + '.wav') for name in SOURCES if (stems / (name + '.wav')).exists()}
+    if charts and 'Accompaniment' in charts and 'Other instruments' in paths:
+        paths['Accompaniment'] = paths.pop('Other instruments')
+    return detect_hype(audio_path, paths, charts=charts)
 
 def encode_background(source, output, job):
     job.run([binary('ffmpeg'), '-nostdin', '-y', '-i', source, '-t', str(MAX_SECONDS),
@@ -253,6 +281,21 @@ def encode_background(source, output, job):
 
 def download_background(url, temp, job):
     url = validate_youtube(url)
+    info_file = temp / 'download.info.json'
+    try:
+        if not info_file.exists():
+            job.run([binary('yt-dlp'), '--ignore-config', '--no-playlist', '--skip-download',
+                     '--write-info-json', '--js-runtimes', 'deno:' + binary('deno'),
+                     '-o', str(temp / 'download.%(ext)s'), '--', url], 'Checking background motion...', 91)
+        from static_background import still_image
+        still = still_image(json.loads(info_file.read_text(encoding='utf-8')))
+        if still is not None:
+            output = temp / 'background.png'
+            still.save(output, format='PNG')
+            job.update('Still background detected; skipping video download.', 94)
+            return output
+    except (RuntimeError, ValueError, OSError, KeyError, TypeError):
+        if getattr(job, 'cancel', None) is not None and job.cancel.exists(): raise
     job.run([binary('yt-dlp'), '--ignore-config', '--no-playlist', '--no-progress', '--no-warnings',
              '--js-runtimes', 'deno:' + binary('deno'), '--socket-timeout', '30', '--retries', '2',
              '--match-filter', 'duration <= 900 & !is_live', '--max-filesize', '200M',
@@ -269,7 +312,7 @@ def download_background(url, temp, job):
 def optional_background(url, destination, temp, job):
     try:
         video = download_background(url, temp, job)
-        shutil.copy2(video, destination)
+        shutil.copy2(video, destination.with_suffix(video.suffix))
         return []
     except (RuntimeError, ValueError, OSError) as error:
         if getattr(job, 'cancel', None) is not None and job.cancel.exists():
@@ -291,10 +334,13 @@ def attach_video(source, library, temp, job):
     if metadata.read_bytes() != original:
         raise ValueError('Song changed while the video was downloading; retry')
     # Install the finished video, then publish its filename in song metadata.
-    shutil.copy2(video, folder / 'background.ogv.partial')
-    os.replace(folder / 'background.ogv.partial', folder / 'background.ogv')
-    pack['video'] = 'background.ogv'
+    name = 'background' + video.suffix
+    shutil.copy2(video, folder / (name + '.partial'))
+    os.replace(folder / (name + '.partial'), folder / name)
+    pack.pop('video', None); pack.pop('background_image', None)
+    pack['background_image' if video.suffix == '.png' else 'video'] = name
     atomic_json(metadata, pack)
+    (folder / ('background.ogv' if video.suffix == '.png' else 'background.png')).unlink(missing_ok=True)
     return [str(folder)], []
 
 def download_youtube_audio(url, temp, job):
@@ -323,31 +369,33 @@ def import_youtube(url, library, temp, job):
     charts = instrument_charts(work / 'audio.wav', temp, job)
     pack = {'schema': 1, 'id': 'yt-' + info['id'], 'category': 'YouTube', 'title': info.get('title', 'YouTube import'),
             'artist': info.get('uploader', 'Unknown'), 'audio': 'audio.wav', 'duration': duration,
-            'charts': charts, 'timing': estimate_timing(work / 'audio.wav'), 'source': url, 'generator': 'htdemucs + phrase thinning + hand flow + dynamic accents + short sustains v9'}
+            'charts': charts, 'timing': estimate_timing(work / 'audio.wav'), 'source': url, 'generator': 'htdemucs_6s + adaptive instruments + evidence-based sustains v10'}
     pack['hype'] = song_hype(work / 'audio.wav', temp, job, pack.get('charts'))
     warnings = optional_background(url, work / 'background.ogv', temp, job)
     if (work / 'background.ogv').is_file():
         pack['video'] = 'background.ogv'
+    if (work / 'background.png').is_file(): pack['background_image'] = 'background.png'
     job.update('Saving generated charts…', 99)
     return [str(commit_pack(work, library, pack))], warnings
 
 def import_card(source, library, temp, job):
     from song_card import decode, read_bounded
     pack = decode(read_bounded(source))
-    target = library / pack['id']
-    if (target / 'song.json').is_file() and (target / 'audio.wav').is_file():
+    target = existing_pack(library, pack['id'])
+    if target is not None and (target / 'audio.wav').is_file():
         return [str(target)], []
     work, duration, info = download_youtube_audio(pack['source'], temp, job)
     if abs(duration - pack['duration']) > 0.5:
         raise ValueError('YouTube audio duration has changed; these shared charts may no longer sync. Import stopped.')
     warnings = optional_background(pack['source'], work / 'background.ogv', temp, job)
     if (work / 'background.ogv').is_file(): pack['video'] = 'background.ogv'
+    if (work / 'background.png').is_file(): pack['background_image'] = 'background.png'
     job.update('Saving the shared charts unchanged…', 99)
     return [str(commit_pack(work, library, pack))], warnings
 
 
 def export_card(request, job):
-    from song_card import encode, read_bounded, render_card
+    from song_card import encode, decode, read_bounded, render_card
     job.update('Embedding charts into the thumbnail…', 30)
     output = Path(request['destination']).resolve()
     if output.suffix.lower() != '.png': raise ValueError('Choose a .png filename.')
@@ -356,6 +404,7 @@ def export_card(request, job):
     temporary = output.with_name(output.name + '.' + uuid.uuid4().hex + '.tmp')
     try:
         temporary.write_bytes(data)
+        decode(read_bounded(temporary))  # Verify embedded charts before committing.
         job.update('Saving song card…', 99)
         os.replace(temporary, output)
     finally:
@@ -378,7 +427,7 @@ def regenerate_song(source, library, temp, job):
     pack['charts'] = instrument_charts(audio_path, temp, job)
     pack['timing'] = estimate_timing(audio_path)
     pack['hype'] = song_hype(audio_path, temp, job, pack.get('charts'))
-    pack['generator'] = 'htdemucs + phrase thinning + hand flow + dynamic accents + short sustains v9'
+    pack['generator'] = 'htdemucs_6s + adaptive instruments + evidence-based sustains v10'
     job.update('Saving updated charts...', 99)
     if pack_file.read_bytes() != original:
         raise ValueError('Song changed during generation; retry')
@@ -410,7 +459,7 @@ def analyze_song_hype(source, library, temp, job):
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == '--separate':
         from demucs.separate import main as separate
-        separate(['-n', 'htdemucs', '-d', 'cpu', '--shifts', '1', '-o', sys.argv[3], sys.argv[2]])
+        separate(['-n', MODEL, '-d', 'cpu', '--shifts', '1', '-o', sys.argv[3], sys.argv[2]])
         return
     parser = argparse.ArgumentParser()
     parser.add_argument('--request', required=True)
@@ -438,6 +487,13 @@ def main():
                 paths, warnings = import_osu(Path(request['source']).resolve(), library, Path(tmp), job)
             else:
                 raise ValueError('Unknown import kind')
+        if request['kind'] == 'card_export':
+            request_path = Path(args.request).resolve()
+            thumbnail_path = Path(request['thumbnail']).resolve()
+            if thumbnail_path.parent == request_path.parent and thumbnail_path.name.startswith('card-thumbnail-'):
+                thumbnail_path.unlink(missing_ok=True)
+            if request_path.name.endswith('.request.json'):
+                request_path.unlink(missing_ok=True)
         atomic_json(job.result, {'state': 'done', 'message': ('Song card exported: ' + request['destination']) if request['kind'] == 'card_export' else 'Import complete', 'progress': 100, 'paths': paths, 'warnings': warnings, 'exported_path': str(Path(request['destination']).resolve()) if request['kind'] == 'card_export' else ''})
     except Exception as error:
         atomic_json(job.result, {'state': 'error', 'message': str(error), 'progress': 0})

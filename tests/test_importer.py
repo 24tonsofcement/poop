@@ -148,23 +148,23 @@ class ImportTests(unittest.TestCase):
                     import shutil
                     shutil.copyfile(args[args.index('-i') + 1], args[-1])
                 elif '--separate' in args:
-                    stems = Path(args[-1]) / 'htdemucs' / 'audio'
+                    stems = Path(args[-1]) / 'htdemucs_6s' / 'audio'
                     stems.mkdir(parents=True)
-                    for index, stem in enumerate(['drums', 'bass', 'vocals', 'other']):
+                    for index, stem in enumerate(['drums', 'bass', 'vocals', 'other', 'guitar', 'piano']):
                         samples = np.zeros(44100 * 4)
                         for t in np.arange(.4 + index * .06, 3.5, .25):
                             phase = np.arange(2205) / 44100
                             sound = .6 * np.sin(2 * np.pi * (220 + index * 100) * phase) * np.exp(-phase * 60)
                             start = round(t * 44100)
                             samples[start:start + len(sound)] = sound
-                        wav(stems / (stem + '.wav'), samples)
+                        wav(stems / (stem + '.wav'), samples if index < 4 else samples*0)
                 else:
                     raise AssertionError(args)
         with patch('worker.binary', side_effect=lambda x: x):
             paths, warnings = import_youtube('https://youtu.be/abcdefghijk', library, temp, SimulatedJob())
         data = json.loads((Path(paths[0]) / 'song.json').read_text())
         self.assertEqual(data['category'], 'YouTube')
-        self.assertEqual(set(data['charts']), {'Drums', 'Bass', 'Vocals', 'Accompaniment'})
+        self.assertEqual(set(data['charts']), {'Drums', 'Bass', 'Vocals', 'Other instruments'})
         first_times = []
         for charts in data['charts'].values():
             self.assertEqual(set(charts), set(DIFFICULTIES))

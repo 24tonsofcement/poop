@@ -67,13 +67,14 @@ try {
 Write-Host '[3/6] Exporting the updated game to a staging folder...'
 $StagedGame = Join-Path $Stage 'PulseFour.exe'
 GodotCheck @('--headless','--path',$PSScriptRoot,'--export-release','Windows Desktop',$StagedGame)
+Run $Python @('scripts/cache_models.py', $Models)
 Write-Host '[4/6] Rebuilding the importer with cached dependencies...'
 Run $Python @('-m','PyInstaller','--noconfirm','--distpath',(Join-Path $Build 'frozen'),'--workpath',(Join-Path $Build 'pyinstaller'),$Spec)
 Copy-Item (Join-Path $Build 'frozen\PulseImporter\*') $Importer -Recurse -Force
 $Smoke = Join-Path $Stage 'smoke.wav'
 Run (Join-Path $Tools 'ffmpeg.exe') @('-nostdin','-y','-i',(Join-Path $PSScriptRoot 'game\demo\audio.wav'),'-t','3',$Smoke)
 Run (Join-Path $Importer 'PulseImporter.exe') @('--separate',$Smoke,(Join-Path $Stage 'stems'))
-Run $Python @($Helper,'verify',(Join-Path $Stage 'stems\htdemucs\smoke'))
+Run $Python @($Helper,'verify',(Join-Path $Stage 'stems\htdemucs_6s\smoke'))
 Write-Host 'Building the standalone lobby server...'
 Run $Python @('-m','PyInstaller','--noconfirm','--onefile','--console','--name','PulseLobby','--distpath',$Stage,'--workpath',(Join-Path $Build 'lobby-pyinstaller'),'--specpath',(Join-Path $Build 'lobby-spec'),'server/lobby_server.py')
 Write-Host 'Testing two network clients and host song/video transfer...'

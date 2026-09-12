@@ -14,6 +14,20 @@ func run_checks() -> void:
 	var scene = load("res://game/main.tscn").instantiate()
 	root.add_child(scene)
 	scene.set_process(false)
+	var original_song: Dictionary = scene.selected
+	var image_folder: String = ProjectSettings.globalize_path("user://still-smoke")
+	DirAccess.make_dir_recursive_absolute(image_folder)
+	var still_fixture: Image = Image.create(80, 45, false, Image.FORMAT_RGB8)
+	still_fixture.fill(Color.RED)
+	still_fixture.save_png(image_folder.path_join("background.png"))
+	scene.selected = {"folder": image_folder, "background_image": "background.png"}
+	scene.prepare_background_video()
+	check(scene.background_image.visible and scene.background_image.texture != null and scene.background_video.stream == null, "Still background loads without video stream")
+	scene.stop_background_video()
+	check(not scene.background_image.visible and scene.background_image.texture == null, "Still background releases on leaving play")
+	scene.selected = original_song
+	DirAccess.remove_absolute(image_folder.path_join("background.png"))
+	DirAccess.remove_absolute(image_folder)
 	var fresh_card = Button.new()
 	scene.stop_card_tween(fresh_card)
 	scene.stop_card_tween(fresh_card)
@@ -187,6 +201,8 @@ func run_arcade_checks(scene) -> void:
 	scene.note_style = old_style
 	scene.save_settings()
 	var Store = load("res://game/score_store.gd")
+	for fixture in [[100.0, "SS"], [99.999, "S"], [95.001, "S"], [95.0, "A"], [90.001, "A"], [90.0, "B"], [80.001, "B"], [80.0, "C"], [70.001, "C"], [70.0, "D"], [0.0, "D"]]:
+		check(Store.grade(float(fixture[0])) == fixture[1], "Accuracy grade boundary " + str(fixture[0]))
 	var store = Store.new()
 	store.path = "user://score-smoke-%d.json" % Time.get_ticks_usec()
 	store.load_data()

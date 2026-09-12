@@ -49,6 +49,7 @@ var category: String = "All songs"
 var screen: String = "menu"
 var ui: Control
 var audio: AudioStreamPlayer
+var background_image: TextureRect
 var background_video: VideoStreamPlayer
 var video_opacity: float = 0.22
 var highway_opacity: float = 0.82
@@ -95,6 +96,7 @@ var online_mode: int = 0
 
 
 func _ready() -> void:
+	call_deferred("cleanup_old_installs")
 	add_child(ui_motion)
 	add_child(online)
 	pack_transfer.lobby = online
@@ -147,6 +149,13 @@ func _ready() -> void:
 	covers.available.connect(func(_id):
 		if screen == "menu":
 			refresh_carousel_covers())
+	background_image = TextureRect.new()
+	background_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	background_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	background_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	background_image.show_behind_parent = true
+	background_image.visible = false
+	add_child(background_image)
 	background_video = VideoStreamPlayer.new()
 	background_video.expand = true
 	background_video.show_behind_parent = true
@@ -291,6 +300,10 @@ func scan_songs() -> void:
 			continue
 		var data = JSON.parse_string(FileAccess.get_file_as_string(path.path_join("song.json")))
 		if valid_song(data) and FileAccess.file_exists(path.path_join(data.audio)):
+			var readable_path: String = song_root.path_join(song_folder_name(data))
+			if path != readable_path and not DirAccess.dir_exists_absolute(readable_path):
+				if DirAccess.rename_absolute(path, readable_path) == OK:
+					path = readable_path
 			data["folder"] = path
 			cap_generated_holds(data)
 			songs.append(data)
@@ -511,7 +524,7 @@ func show_menu() -> void:
 	if not selected.is_empty() and selected.get("category", "") == "YouTube":
 		var regen_row = box_into(import_drawer, true)
 		button_into(regen_row, "Regenerate chart", func(): start_import("regenerate", str(selected.folder))).disabled = worker_pid > 0
-		if selected.get("video", "") != "background.ogv" or not FileAccess.file_exists(str(selected.folder).path_join("background.ogv")):
+		if not FileAccess.file_exists(str(selected.folder).path_join("background.ogv")) and not FileAccess.file_exists(str(selected.folder).path_join("background.png")):
 			button_into(regen_row, "Download video", func(): start_import("video", str(selected.folder))).disabled = worker_pid > 0
 	status_label = label_into(root, last_message, 14, COLORS[0])
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -743,7 +756,7 @@ func refresh_menu_leaderboard() -> void:
 	if rows.is_empty():
 		label_into(scores, "No scores yet — set the first record!", 15, MUTED)
 	for i in range(mini(3, rows.size())):
-		label_into(scores, "%d. %s  ·  %d" % [i + 1, rows[i].name, int(rows[i].score)], 16, COLORS[i])
+		label_into(scores, "%d. %s  ·  %s  ·  %d" % [i + 1, rows[i].name, ScoreStore.grade(float(rows[i].accuracy)), int(rows[i].score)], 16, COLORS[i])
 
 func request_preview() -> void:
 	var id: String = str(selected.get("id", "")) + ":" + str(selected.get("folder", ""))
@@ -1183,6 +1196,7 @@ func poll_import() -> void:
 				if not exported_path.is_empty():
 					last_card_export_dir = exported_path.get_base_dir()
 					save_settings()
+					DirAccess.remove_absolute(job_result)
 				if not data.get("warnings", []).is_empty():
 					last_message += " · Skipped: " + "; ".join(data.warnings)
 				scan_songs()
@@ -1568,10 +1582,13 @@ func layout_background_video() -> void:
 	var display_size: Vector2 = Vector2(size.x, size.x * 9.0 / 16.0)
 	if display_size.y > size.y:
 		display_size = Vector2(size.y * 16.0 / 9.0, size.y)
+	background_image.size = size
 	background_video.size = display_size
 	background_video.position = (size - display_size) / 2
 
 func stop_background_video() -> void:
+	background_image.visible = false
+	background_image.texture = null
 	background_video.stop()
 	background_video.visible = false
 	background_video.paused = false
@@ -1580,6 +1597,16 @@ func prepare_background_video() -> void:
 	stop_background_video()
 	background_video.stream = null
 	background_video.modulate = Color(1, 1, 1, video_opacity)
+	if video_opacity > 0 and selected.get("background_image", "") == "background.png":
+		var image_path: String = str(selected.folder).path_join("background.png")
+		if FileAccess.file_exists(image_path):
+			var still = Image.load_from_file(image_path)
+			if still != null:
+				background_image.texture = ImageTexture.create_from_image(still)
+				background_image.modulate = Color(1, 1, 1, video_opacity)
+				background_image.visible = true
+				layout_background_video()
+		return
 	if video_opacity <= 0 or selected.get("video", "") != "background.ogv":
 		return
 	var path: String = str(selected.folder).path_join("background.ogv")
@@ -1637,7 +1664,7 @@ func record_completed_runs() -> void:
 		if r.notes.is_empty() or int(r.judged) != r.notes.size() or r.notes.any(func(note): return int(note.state) < 2):
 			continue
 		var accuracy: float = 100.0 * float(r.raw_score) / (300.0 * r.notes.size())
-		var entry: Dictionary = {"name": r.profile, "score": r.score, "accuracy": accuracy, "combo": r.best, "date": Time.get_datetime_string_from_system()}
+		var entry: Dictionary = {"name": r.profile, "score": r.score, "accuracy": accuracy, "grade": ScoreStore.grade(accuracy), "combo": r.best, "date": Time.get_datetime_string_from_system()}
 		var meta: Dictionary = {"song_id": selected.id, "title": selected.title, "instrument": choices[p].instrument, "difficulty": choices[p].difficulty}
 		var result: Dictionary = score_store.submit(str(r.chart_key), meta, entry)
 		r.new_best = result.improved
@@ -1716,15 +1743,15 @@ func show_leaderboard() -> void:
 	filters.add_child(difficulty)
 	var rows: Array = score_store.entries(chart_key_for(board_instrument, board_difficulty))
 	var grid = GridContainer.new()
-	grid.columns = 5
+	grid.columns = 6
 	grid.add_theme_constant_override("h_separation", 30)
 	grid.add_theme_constant_override("v_separation", 14)
 	root.add_child(grid)
-	for heading in ["Rank", "Player", "Points", "Accuracy", "Best streak"]:
+	for heading in ["Rank", "Player", "Grade", "Points", "Accuracy", "Best streak"]:
 		label_into(grid, heading, 17, COLORS[1])
 	for i in range(rows.size()):
 		var row: Dictionary = rows[i]
-		for cell in [str(i + 1), str(row.name), str(int(row.score)), "%.2f%%" % float(row.accuracy), str(int(row.get("combo", 0)))]:
+		for cell in [str(i + 1), str(row.name), ScoreStore.grade(float(row.accuracy)), str(int(row.score)), "%.2f%%" % float(row.accuracy), str(int(row.get("combo", 0)))]:
 			label_into(grid, cell, 20)
 	if rows.is_empty():
 		label_into(root, "No scores yet. Finish this chart to set your first personal best.", 18, MUTED)
@@ -1884,6 +1911,7 @@ func show_results() -> void:
 		label_into(card, str(r.profile), 22, COLORS[p])
 		label_into(card, str(choices[p].instrument) + " / " + str(choices[p].difficulty), 16)
 		var acc: float = 100.0 * float(r.raw_score) / maxf(300, float(r.notes.size()) * 300)
+		label_into(card, ScoreStore.grade(acc), 64, COLORS[p])
 		label_into(card, "%.2f%%" % acc, 36)
 		label_into(card, "%06d points" % r.score, 20)
 		label_into(card, "Best streak  %d  /  Peak %d×" % [r.best, multiplier_for(int(r.best))], 16)
@@ -2156,6 +2184,8 @@ func install_online_pack(folder: String) -> void:
 	meta.category = str(meta.get("category", "Built-in"))
 	meta.duration = float(meta.get("duration", 0))
 	meta.erase("folder")
+	if meta.get("background_image", "") != "background.png":
+		meta.erase("background_image")
 	if meta.get("video", "") != "background.ogv":
 		meta.erase("video")
 	var output = FileAccess.open(folder.path_join("song.json"), FileAccess.WRITE)
@@ -2165,7 +2195,7 @@ func install_online_pack(folder: String) -> void:
 		return
 	output.store_string(JSON.stringify(meta))
 	output.close()
-	var destination: String = song_root.path_join(identity + "-" + str(Time.get_ticks_usec()))
+	var destination: String = song_root.path_join(song_folder_name(meta) + "-" + str(Time.get_ticks_usec()))
 	if DirAccess.rename_absolute(folder, destination) != OK:
 		online_message = "Could not install the downloaded song. Check free disk space."
 		update_online_lobby()
@@ -2183,7 +2213,7 @@ func draw_arcade_backdrop() -> void:
 	var w: float = size.x
 	var h: float = size.y
 	if screen == "game":
-		if not is_instance_valid(background_video) or not background_video.visible:
+		if (not is_instance_valid(background_video) or not background_video.visible) and (not is_instance_valid(background_image) or not background_image.visible):
 			draw_rect(Rect2(Vector2.ZERO, size), Color("101516"))
 			for x in range(0, int(w), 48):
 				draw_line(Vector2(x, 0), Vector2(x, h), Color(1, 1, 1, 0.025))
@@ -2388,3 +2418,21 @@ func request_play(disc: Button) -> void:
 			start_game()
 		else:
 			apply_audio_levels())
+
+func cleanup_old_installs() -> void:
+	if OS.has_feature("editor") or OS.get_name() != "Windows" or DisplayServer.get_name() == "headless":
+		return
+	var folder: String = OS.get_executable_path().get_base_dir()
+	var worker: String = folder.path_join("importer/PulseImporter.exe")
+	if FileAccess.file_exists(worker):
+		OS.create_process(worker, ["--cleanup-old-versions", folder])
+
+func song_folder_name(song: Dictionary) -> String:
+	var title: String = str(song.get("title", "Song")).validate_filename().strip_edges().left(70)
+	while title.ends_with(".") or title.ends_with(" "):
+		title = title.left(title.length() - 1)
+	if title.is_empty(): title = "Song"
+	var base: String = title.get_slice(".", 0).to_upper()
+	if base in ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"]:
+		title = "_" + title
+	return title + " [" + str(song.get("id", "song")).sha256_text().left(10) + "]"

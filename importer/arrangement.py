@@ -104,7 +104,7 @@ def add_supported_chords(notes, attacks, scores, bands, voice_bins, voice_weight
     charts deliberately use fewer chords than the full-song reference maps.
     """
     part = instrument.lower()
-    if part not in ('drums', 'other', 'keys', 'synth', 'piano') or not attacks: return
+    if part not in ('drums', 'other', 'keys', 'synth', 'piano', 'guitar') or not attacks: return
     budget = {'Easy': .06, 'Normal': .12, 'Hard': .20, 'Expert': .28, 'Master': .32, 'Insane': .36}[difficulty]
     scale = np.maximum(np.percentile(bands[attacks], 90, axis=0), .0001)
     groups = {}

@@ -1,3 +1,18 @@
+## Grades, adaptive instruments and storage cleanup — 1.9.0
+
+- Results and personal-best tables show osu!mania-style accuracy grades: SS = 100%, S > 95%, A > 90%, B > 80%, C > 70%, otherwise D. Grade uses unrounded raw judgement accuracy, independent of hold/combo/hype points; old records gain grades automatically. [Threshold reference](https://osu.ppy.sh/wiki/en/Gameplay/Grade).
+- Long holds have no fixed duration ceiling. They require strong pitch and energy continuity throughout the tail, remain limited by same-lane releases, and use a separate 2% head budget with eight seconds between long-hold starts. Short holds remain the default; at most two holds can be active.
+- Six-source separation selects detected vocals and drums, plus the two strongest remaining audible sources among bass, guitar, piano and Other instruments. Missing parts are not filled with silent charts. Presence/ranking use energy/activity heuristics; separation leakage can cause mistakes. Unrecognised instruments remain grouped as Other instruments. Demucs specifically documents imperfect piano separation; this is not arbitrary instrument recognition. [Model reference](https://github.com/facebookresearch/demucs).
+- After a successful normal launch, obsolete managed versions under `%LOCALAPPDATA%/PulseFour/app/versions` are removed. Running versions are skipped and retried later. This works with the existing launcher. Portable copies elsewhere, songs, scores and settings are not deleted.
+- Successful PNG export verifies embedded data before saving and deletes temporary chart requests/thumbnails afterward. The exported PNG retains its data; the playable library song is preserved. Failed exports retain recoverable inputs.
+- Song folders use their titles plus a short identity suffix; existing folders migrate when they can be renamed. Internal audio/metadata filenames remain stable for multiplayer and card compatibility.
+- YouTube storyboard frames are checked before video download. Consistent still previews use a PNG background; moving, sparse or missing previews retain video. Preview sampling can miss brief motion. Still images use the same dimming control and transfer with multiplayer packs.
+- Removed duplicate FFmpeg executable packaging from the license directory (notices/docs remain); model caching retains only the active model; research files are excluded from game resources. Runtime scripts, sprites and the shared demo were audited and retained because they are referenced.
+
+Use **Regenerate chart** to get the new instrument selection and hold rules on existing songs. Card imports retain shared charts unchanged. Existing downloaded videos are not mass-deleted or redownloaded.
+
+Validation: 89 Python tests, including selection, long sustains, update cleanup, PNG still detection/download bypass and title collisions. Grade boundary checks are included in the Godot smoke suite. Real six-stem inference and Windows/Godot packaging are verified in CI; local fixtures mock the separator/downloader.
+
 ## Dynamic chart accents and shorter holds — 1.8.0
 
 Generator v9 allows supported three-note accents on Hard and above, and rare four-note accents on Expert and above (at most 2% of measured rows, at least eight seconds apart). Bass/vocals remain single-voice charts. Holds can now be as short as 160ms outside Easy, prefer shorter sustained sounds, and cap continuous tails at 1.6 seconds. The two-active-hold cap and existing release/scoring rules remain unchanged.
