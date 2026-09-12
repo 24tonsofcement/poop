@@ -1,7 +1,8 @@
 """Conservative audio-based highlights, not semantic chorus recognition.
 
-Two-second loudness/spectral windows identify energy lifts, repeated energetic
-phrases and stem dominance. Store confidence so sensitivity can change in-game.
+Two-second loudness/spectral windows identify energy lifts and stem dominance.
+Chart activity supports confidence but cannot make quiet passages into hype.
+Repeated spectra are supporting evidence, not a semantic chorus label.
 """
 from pathlib import Path
 import numpy as np
@@ -54,7 +55,26 @@ def sections(scores, kinds, duration, minimum=4.0):
     return result
 
 
-def detect_arrays(energy, bands, duration, stems=None):
+def chart_activity(charts, count):
+    """One representative difficulty per instrument; chord heads and bounded
+    sustain occupancy support audio highlights without counting six charts."""
+    result = {}
+    for name, difficulties in (charts or {}).items():
+        notes = difficulties.get('Expert')
+        if notes is None:
+            notes = max(difficulties.values(), key=len, default=[])
+        activity = np.zeros(count)
+        for note in notes:
+            start = float(note['t']); end = max(start, float(note.get('end', start)))
+            index = int(start / STEP)
+            if 0 <= index < count: activity[index] += 1
+            for i in range(max(0, index), min(count, int(end / STEP) + 1)):
+                activity[i] += .5 * max(0, min(end, (i+1)*STEP) - max(start, i*STEP))
+        result[name] = activity
+    return result
+
+
+def detect_arrays(energy, bands, duration, stems=None, charts=None):
     energy = np.asarray(energy, dtype=float)
     n = len(energy)
     output = {'schema': 1, 'global': [], 'instruments': {}}
@@ -63,11 +83,14 @@ def detect_arrays(energy, bands, duration, stems=None):
     baseline = max(float(np.median(energy)), .001)
     spread = max(float(np.percentile(energy, 90) - np.percentile(energy, 20)), baseline * .4)
     lift = np.clip((energy - np.percentile(energy, 35)) / spread, 0, 1)
+    activity = chart_activity(charts, n)
+    combined = np.sum(list(activity.values()), axis=0) if activity else np.zeros(n)
+    chart_lift = np.clip(combined / max(float(np.percentile(combined, 80)), 1), 0, 1)
     scores = np.zeros(n)
     kinds = ['hype'] * n
     for i in range(n):
         # Require a substantial lift: constant loudness is not a whole-song bonus.
-        if lift[i] < .5 or energy[i] < baseline * 1.12:
+        if lift[i] < .5 or energy[i] < max(float(np.percentile(energy, 20)) * 1.25, .004):
             continue
         before = np.mean(energy[max(0, i - 4):i]) if i else energy[i]
         drop = energy[i] > max(before * 1.55, .008)
@@ -83,8 +106,8 @@ def detect_arrays(energy, bands, duration, stems=None):
                 if similarity > .94 and contour < .35 and np.mean(energy[j:j+3]) > baseline * 1.1:
                     repeated = True
                     break
-        scores[i] = min(.98, .48 + .20 * lift[i] + .16 * drop + .12 * repeated)
-        kinds[i] = 'drop' if drop else 'chorus' if repeated else 'hype'
+        scores[i] = min(.98, .50 + .22 * lift[i] + .12 * drop + .06 * repeated + .08 * chart_lift[i])
+        kinds[i] = 'drop' if drop else 'hype' if repeated else 'hype'
     output['global'] = sections(scores, kinds, duration)
     if stems:
         names = list(stems)
@@ -97,12 +120,14 @@ def detect_arrays(energy, bands, duration, stems=None):
             # Dominance must rise above this instrument's normal mix position.
             mask = ((share > .42) & (share > normal * 1.6) &
                     (part > max(float(np.median(part)) * 1.3, .004)))
+            if name in activity:
+                mask &= activity[name] >= max(.5, float(np.percentile(activity[name], 50)))
             solo_scores = np.where(mask, np.minimum(.98, .65 + .3 * share), 0)
             output['instruments'][name] = sections(solo_scores, ['solo'] * n, duration)
     return output
 
 
-def detect_hype(audio, stem_paths=None):
+def detect_hype(audio, stem_paths=None, charts=None):
     energy, bands, duration = features(audio)
     stems = {name: features(path)[0] for name, path in (stem_paths or {}).items()}
-    return detect_arrays(energy, bands, duration, stems)
+    return detect_arrays(energy, bands, duration, stems, charts)

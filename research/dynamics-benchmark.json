@@ -1,0 +1,47 @@
+{
+  "input": "30-second full mixes, Other Expert; not isolated instrument stems or a playtest",
+  "results": [
+    {
+      "clip": "arrange-Flower_Dance.clip.wav",
+      "notes": 138,
+      "rows": 105,
+      "chord_sizes": {
+        "1": 80,
+        "2": 19,
+        "3": 4,
+        "4": 2
+      },
+      "holds": 17,
+      "hold_median": 0.259,
+      "hold_max": 0.574
+    },
+    {
+      "clip": "arrange-Hitorigoto.clip.wav",
+      "notes": 179,
+      "rows": 142,
+      "chord_sizes": {
+        "1": 114,
+        "2": 21,
+        "3": 5,
+        "4": 2
+      },
+      "holds": 24,
+      "hold_median": 0.444,
+      "hold_max": 0.808
+    },
+    {
+      "clip": "arrange-Marble_Soda.clip.wav",
+      "notes": 174,
+      "rows": 135,
+      "chord_sizes": {
+        "1": 105,
+        "2": 23,
+        "3": 5,
+        "4": 2
+      },
+      "holds": 15,
+      "hold_median": 0.274,
+      "hold_max": 0.618
+    }
+  ]
+}

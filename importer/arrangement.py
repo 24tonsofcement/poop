@@ -8,7 +8,7 @@ import math
 import numpy as np
 
 
-def phrase_onsets(pool, scores, gap, percentile, step, reference=None):
+def phrase_onsets(pool, scores, gap, percentile, step, reference=None, intensity=None):
     """Simplify recurring short rhythmic gestures consistently at each level.
 
     A natural rest splits a gesture; eight attacks cap dense passages. This is
@@ -27,13 +27,15 @@ def phrase_onsets(pool, scores, gap, percentile, step, reference=None):
     chosen, templates = [], {}
     for group in groups:
         rhythm = tuple(round((b - a) * step / .02) for a, b in zip(group, group[1:]))
-        key = (len(group), rhythm)
+        level = float(np.mean([intensity[at] for at in group])) if intensity is not None else 1.0
+        key = (len(group), rhythm, int(level * 4))
+        local_gap = gap * (1.0 + .8 * (1.0 - level))
         mask = templates.get(key)
         if mask is None:
             eligible = [j for j, at in enumerate(group) if scores[at] >= cutoff]
             local = []
             for j in sorted(eligible, key=lambda j: (-float(scores[group[j]]) * (1.15 if j == 0 else 1.0), j)):
-                if all(abs(group[j] - group[k]) * step >= gap for k in local): local.append(j)
+                if all(abs(group[j] - group[k]) * step >= local_gap for k in local): local.append(j)
             mask = tuple(sorted(local))
             templates[key] = mask
         for j in mask:
@@ -77,10 +79,10 @@ def flowing_lanes(attacks, desired, step):
     return result
 
 
-def independent_tones(bins, weights, frequencies):
+def tone_count(bins, weights, frequencies):
     """Require two strong non-harmonic spectral peaks; harmonics aren't chords."""
     order = sorted(range(len(bins)), key=lambda j: -weights[j])
-    if not order or weights[order[0]] <= 0: return False
+    if not order or weights[order[0]] <= 0: return 0
     selected = []
     for j in order:
         frequency = float(frequencies[int(bins[j])])
@@ -88,12 +90,15 @@ def independent_tones(bins, weights, frequencies):
         if any(abs(frequency - other) < 65 for other in selected): continue
         if any(abs(max(frequency, other) / min(frequency, other) - round(max(frequency, other) / min(frequency, other))) < .045 for other in selected): continue
         selected.append(frequency)
-        if len(selected) == 2: return True
-    return False
+    return len(selected)
+
+
+def independent_tones(bins, weights, frequencies):
+    return tone_count(bins, weights, frequencies) >= 2
 
 
 def add_supported_chords(notes, attacks, scores, bands, voice_bins, voice_weights, frequencies, instrument, difficulty, step):
-    """Add at most one companion at an existing attack, only with audio evidence.
+    """Add evidence-supported chords at measured attacks, with rare wide accents.
 
     Budgets are ceilings, never targets. Bass/vocals stay single voice. Per-stem
     charts deliberately use fewer chords than the full-song reference maps.
@@ -105,6 +110,8 @@ def add_supported_chords(notes, attacks, scores, bands, voice_bins, voice_weight
     groups = {}
     for note, at in zip(notes, attacks): groups.setdefault(int(note['t'] // 4), []).append((note, at))
     extras = []
+    last_triple = last_quad = -100.
+    triple_count = quad_count = 0
     for group in groups.values():
         limit = int(len(group) * budget)
         if not limit: continue
@@ -116,8 +123,10 @@ def add_supported_chords(notes, attacks, scores, bands, voice_bins, voice_weight
             if part == 'drums':
                 strong = [b for b in range(4) if bands[at, b] >= scale[b] * .6 and bands[at, b] >= np.max(bands[at]) * .25]
                 supported = any(abs(a-b) >= 2 for a in strong for b in strong)
+                voices = len(strong)
             else:
-                supported = independent_tones(voice_bins[at], voice_weights[at], frequencies)
+                voices = tone_count(voice_bins[at], voice_weights[at], frequencies)
+                supported = voices >= 2
             if not supported: continue
             # A cross-hand double has a predictable placement and avoids adding
             # a rapid repeat immediately next to another head in that lane.
@@ -125,6 +134,20 @@ def add_supported_chords(notes, attacks, scores, bands, voice_bins, voice_weight
             lane = next((lane for lane in choices if all(other['lane'] != lane or abs(other['t'] - note['t']) >= .15 for other in notes[max(0, bisect.bisect_left(attacks, at)-3):bisect.bisect_left(attacks, at)+4])), None)
             if lane is None: continue
             extras.append({'t': note['t'], 'end': note['t'], 'lane': lane})
+            size = 2
+            if difficulty in ('Hard', 'Expert', 'Master', 'Insane') and voices >= 3 and note['t'] - last_triple >= 3 and triple_count < int(len(attacks) * .06):
+                size = 3
+            if difficulty in ('Expert', 'Master', 'Insane') and voices >= 4 and note['t'] - last_quad >= 8 and quad_count < int(len(attacks) * .02):
+                size = 4
+            occupied = {note['lane'], lane}
+            for extra_lane in range(4):
+                if len(occupied) >= size: break
+                if extra_lane in occupied: continue
+                if any(n['lane'] == extra_lane and abs(n['t'] - note['t']) < .15 for n in notes): continue
+                extras.append({'t': note['t'], 'end': note['t'], 'lane': extra_lane})
+                occupied.add(extra_lane)
+            if len(occupied) >= 3: last_triple = note['t']; triple_count += 1
+            if len(occupied) == 4: last_quad = note['t']; quad_count += 1
             limit -= 1; previous = note['t']
     notes.extend(extras)
     notes.sort(key=lambda n: (n['t'], n['lane']))

@@ -18,7 +18,7 @@ class RhythmTests(unittest.TestCase):
         self.assertTrue(all(n['end'] <= n['t'] + .94 for n in holds))
 
     def test_short_or_changing_tones_are_taps(self):
-        for pitches, duration in [(np.ones(300)*20, .25), (np.arange(300), 1.5)]:
+        for pitches, duration in [(np.ones(300)*20, .08), (np.arange(300), 1.5)]:
             notes = [{'t': .1, 'end': .1 + duration, 'lane': 0}]
             sparse_sustains(notes, pitches, [], .01)
             self.assertEqual(notes[0]['t'], notes[0]['end'])
@@ -52,3 +52,26 @@ class RhythmTests(unittest.TestCase):
             self.assertTrue(all(min(abs(t - n['t']) for t in times) < .035 for n in charts[difficulty]))
             previous=heads
         self.assertTrue(all(min(abs(n['t']-t) for n in charts['Expert']) < .035 for t in times))
+
+    def test_short_holds_survive_and_long_holds_are_bounded(self):
+        for length in [.18, .25, .5, 8.0]:
+            notes = [{'t': .1, 'end': .1+length, 'lane': 0}]
+            sparse_sustains(notes, np.ones(1000)*20, [], .01)
+            self.assertGreater(notes[0]['end'], notes[0]['t'])
+            self.assertLessEqual(notes[0]['end']-notes[0]['t'], 1.60001)
+
+    def test_short_sustains_generated_from_audio(self):
+        rate=22050; audio=np.zeros(rate*12)
+        for t in np.arange(.5,11,.5):
+            local=np.arange(int(.24*rate))/rate
+            burst=.6*np.sin(2*np.pi*220*local)
+            start=round(t*rate);audio[start:start+len(burst)] = burst
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'short.wav'
+            with wave.open(str(path),'wb') as w:
+                w.setnchannels(1);w.setsampwidth(2);w.setframerate(rate)
+                w.writeframes((audio*32767).astype('<i2').tobytes())
+            notes=generate_charts(path,instrument='vocals')['Expert']
+        holds=[n for n in notes if n['end']>n['t']]
+        self.assertTrue(holds)
+        self.assertTrue(all(.16 <= n['end']-n['t'] < .35 for n in holds))

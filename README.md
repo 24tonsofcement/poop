@@ -1,3 +1,13 @@
+## Dynamic chart accents and shorter holds — 1.8.0
+
+Generator v9 allows supported three-note accents on Hard and above, and rare four-note accents on Expert and above (at most 2% of measured rows, at least eight seconds apart). Bass/vocals remain single-voice charts. Holds can now be as short as 160ms outside Easy, prefer shorter sustained sounds, and cap continuous tails at 1.6 seconds. The two-active-hold cap and existing release/scoring rules remain unchanged.
+
+Song-relative energy now influences onset selection and spacing; repeated rhythm templates distinguish intensity levels so a quiet pattern does not suppress a louder repeat. Hype combines audio energy lifts with representative chart activity, and instrument solos require chart activity when charts are available. This is signal-based analysis, not guaranteed chorus recognition.
+
+Use **Regenerate chart** for existing songs to receive the new notes and hype analysis. Hype-only analysis preserves notes. Imported PNG cards preserve their author's embedded charts and hype metadata.
+
+Validation: 76 Python tests; [three supplied audio clip measurements](research/dynamics-benchmark.json). Clip measurements use full mixes, not isolated stems, and do not replace listening/playtesting. Windows packaging and Godot validation run in GitHub Actions.
+
 ## Sample-informed chart generation — 1.7.0
 
 Analyzed 169 native 4K charts from the supplied 47-set archive. Generator v8 adds conservative audio-supported doubles, fast finger-flow planning, and consistent simplification of repeated rhythmic gestures. The two-active-hold cap remains. New YouTube imports use the update; use **Regenerate chart** for existing songs. PNG card imports keep the shared charts unchanged.

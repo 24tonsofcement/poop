@@ -56,3 +56,18 @@ class HypeTests(unittest.TestCase):
             result = detect_hype(path)
             self.assertTrue(any(section['start'] <= 10 < section['end'] for section in result['global']))
             self.assertTrue(any(section['start'] <= 26 < section['end'] for section in result['global']))
+
+    def test_busy_quiet_chart_does_not_create_hype(self):
+        energy=np.full(40,.02);energy[20:30]=.2
+        notes=[{'t': t, 'end': t, 'lane': 0} for t in np.arange(0,40,.1)]
+        notes += [{'t': t, 'end': t, 'lane': 0} for t in np.arange(40,60,1)]
+        result=detect_arrays(energy,np.ones((40,8))/np.sqrt(8),80,
+            charts={'Drums': {'Expert':notes}})
+        self.assertFalse(any(s['start']<40 for s in result['global']))
+        self.assertTrue(any(s['start']<=46<s['end'] for s in result['global']))
+
+    def test_empty_instrument_chart_cannot_claim_solo(self):
+        stem=np.full(30,.02);stem[10:15]=.3
+        result=detect_arrays(np.ones(30)*.1,np.ones((30,8))/np.sqrt(8),60,
+            {'Bass':stem,'Drums':np.ones(30)*.08}, {'Bass': {'Expert':[]}})
+        self.assertFalse(result['instruments']['Bass'])

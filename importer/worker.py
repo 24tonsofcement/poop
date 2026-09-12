@@ -200,7 +200,7 @@ def import_osu(source, library, temp, job):
                 'source': 'osu!mania', 'credits': meta.get('Metadata.Creator', '')}
         if max(n['end'] for notes in group['charts'].values() for n in notes) > duration + 2:
             raise ValueError('Beatmap notes extend beyond its audio')
-        pack['hype'] = detect_hype(work / 'audio.wav')
+        pack['hype'] = detect_hype(work / 'audio.wav', charts=pack.get('charts'))
         imported.append(str(commit_pack(work, library, pack)))
     return imported, skipped
 
@@ -237,10 +237,10 @@ def instrument_charts(audio_path, temp, job):
         raise ValueError('No playable onsets detected')
     return charts
 
-def song_hype(audio_path, temp, job):
-    job.update('Detecting energy lifts, recurring choruses and instrument solos...', 93)
+def song_hype(audio_path, temp, job, charts=None):
+    job.update('Matching energy lifts and instrument solos with chart activity...', 93)
     stems = temp / 'stems' / 'htdemucs' / 'audio'
-    return detect_hype(audio_path, {('Accompaniment' if name == 'other' else name.title()): stems / (name + '.wav') for name in ['drums', 'bass', 'vocals', 'other']})
+    return detect_hype(audio_path, {('Accompaniment' if name == 'other' else name.title()): stems / (name + '.wav') for name in ['drums', 'bass', 'vocals', 'other']}, charts=charts)
 
 def encode_background(source, output, job):
     job.run([binary('ffmpeg'), '-nostdin', '-y', '-i', source, '-t', str(MAX_SECONDS),
@@ -323,8 +323,8 @@ def import_youtube(url, library, temp, job):
     charts = instrument_charts(work / 'audio.wav', temp, job)
     pack = {'schema': 1, 'id': 'yt-' + info['id'], 'category': 'YouTube', 'title': info.get('title', 'YouTube import'),
             'artist': info.get('uploader', 'Unknown'), 'audio': 'audio.wav', 'duration': duration,
-            'charts': charts, 'timing': estimate_timing(work / 'audio.wav'), 'source': url, 'generator': 'htdemucs + phrase thinning + hand flow + supported chords v8'}
-    pack['hype'] = song_hype(work / 'audio.wav', temp, job)
+            'charts': charts, 'timing': estimate_timing(work / 'audio.wav'), 'source': url, 'generator': 'htdemucs + phrase thinning + hand flow + dynamic accents + short sustains v9'}
+    pack['hype'] = song_hype(work / 'audio.wav', temp, job, pack.get('charts'))
     warnings = optional_background(url, work / 'background.ogv', temp, job)
     if (work / 'background.ogv').is_file():
         pack['video'] = 'background.ogv'
@@ -377,8 +377,8 @@ def regenerate_song(source, library, temp, job):
         raise ValueError('Cached audio is missing')
     pack['charts'] = instrument_charts(audio_path, temp, job)
     pack['timing'] = estimate_timing(audio_path)
-    pack['hype'] = song_hype(audio_path, temp, job)
-    pack['generator'] = 'htdemucs + phrase thinning + hand flow + supported chords v8'
+    pack['hype'] = song_hype(audio_path, temp, job, pack.get('charts'))
+    pack['generator'] = 'htdemucs + phrase thinning + hand flow + dynamic accents + short sustains v9'
     job.update('Saving updated charts...', 99)
     if pack_file.read_bytes() != original:
         raise ValueError('Song changed during generation; retry')
@@ -399,9 +399,9 @@ def analyze_song_hype(source, library, temp, job):
     audio = folder / 'audio.wav'
     if pack.get('category') == 'YouTube':
         separate_stems(audio, temp, job)
-        pack['hype'] = song_hype(audio, temp, job)
+        pack['hype'] = song_hype(audio, temp, job, pack.get('charts'))
     else:
-        pack['hype'] = detect_hype(audio)
+        pack['hype'] = detect_hype(audio, charts=pack.get('charts'))
     if pack_file.read_bytes() != original:
         raise ValueError('Song changed during analysis; retry')
     atomic_json(pack_file, pack)

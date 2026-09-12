@@ -107,12 +107,16 @@ def generate_charts(path: Path, allow_holds: bool = True, instrument: str = "mel
             for i, pitch in zip(candidates, midi):
                 lanes[i] = 1 if high - low < 1 else int(np.clip(round(3 * (pitch - low) / (high - low)), 0, 3))
     scores = rhythmic_salience(envelope, candidates, hop / sr)
+    # Preserve song-wide dynamics instead of promoting every quiet local peak.
+    smooth_energy = np.convolve(energies, np.ones(min(len(energies), 101)) / min(len(energies), 101), mode="same")
+    intensity = np.clip(smooth_energy / max(float(np.percentile(smooth_energy, 85)), .002), 0, 1)
+    scores = scores * (.2 + .8 * intensity)
     lanes = phrase_patterns(candidates, lanes, scores, hop / sr, instrument)
     result = {}
     pool = candidates
     # All levels draw from the same measured onsets; harder levels add density.
     for difficulty, (gap, percentile) in reversed(list(DIFFICULTIES.items())):
-        chosen = phrase_onsets(pool, scores, gap, percentile, hop / sr, candidates)
+        chosen = phrase_onsets(pool, scores, gap, percentile, hop / sr, candidates, intensity)
         pool = chosen
         # Thinning can accidentally select the same motif step repeatedly.
         # Re-pattern those long runs at this difficulty before building holds.
@@ -141,7 +145,7 @@ def add_holds(notes, energies, frame_seconds, duration, difficulty):
     jittering tails. Gaps between tails and following same-lane notes give
     players time to release and press again. Short/percussive events stay taps.
     """
-    minimum = 0.35 if difficulty == 'Easy' else 0.25
+    minimum = 0.28 if difficulty == 'Easy' else 0.16
     release_frames = max(1, round(0.08 / frame_seconds))
     next_in_lane = [duration + 0.10] * 4
     for note in reversed(notes):
@@ -220,16 +224,16 @@ def sparse_sustains(notes, pitches, attacks, frame_seconds):
 
     Energy/release and same-lane overlap were checked by add_holds. Other-lane
     attacks no longer truncate sustained tones. Allow vibrato and gentle slides.
-    Distribute a modest hold budget across the song instead of only its longest
-    tones. The attacks argument remains for compatibility with previous callers.
+    Prefer short sustains around 450ms, cap continuous tails at 1.6 seconds,
+    and distribute a modest hold budget across the song. The attacks argument remains for compatibility with previous callers.
     """
     eligible = []
     for note in notes:
-        head, tail = note['t'], note['end']
+        head, tail = note['t'], min(note['end'], note['t'] + 1.6)
         a, b = round((head + .06) / frame_seconds), round(tail / frame_seconds)
         pitch = pitches[a:b]
         stable = len(pitch) > 0 and np.percentile(pitch, 90) - np.percentile(pitch, 10) <= max(4, float(np.median(pitch)) * .45)
-        if tail - head >= .4 and stable:
+        if tail - head >= .16 and stable:
             eligible.append((tail - head, note, round(tail, 4)))
         note['end'] = head
     budget = max(1, math.ceil(len(notes) * .18)) if notes else 0
@@ -238,7 +242,7 @@ def sparse_sustains(notes, pitches, attacks, frame_seconds):
     for item in eligible:
         regions.setdefault(int(item[1]['t'] // 8), []).append(item)
     for region in regions.values():
-        region.sort(key=lambda row: (-row[0], row[1]['t']))
+        region.sort(key=lambda row: (abs(row[0] - .45), row[1]['t']))
     heads = []
     while regions and len(heads) < budget:
         for key in list(regions):

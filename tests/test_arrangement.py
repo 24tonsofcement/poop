@@ -43,3 +43,22 @@ class ArrangementTests(unittest.TestCase):
         chosen=phrase_onsets(pool,scores,.45,40,.01)
         self.assertEqual([at for at in chosen if at in first],[at-300 for at in chosen if at in second])
         self.assertTrue(all((b-a)*.01>=.45 for a,b in zip(chosen,chosen[1:])))
+
+    def test_wide_chords_are_rare_and_require_four_band_evidence(self):
+        attacks = list(range(50, 8050, 50))
+        notes = [{'t': at*.01, 'end': at*.01, 'lane': i%4} for i,at in enumerate(attacks)]
+        add_supported_chords(notes, attacks, np.ones(8100), np.ones((8100,4)),
+            np.zeros((8100,6), dtype=int), np.zeros((8100,6)), np.arange(100), 'drums', 'Expert', .01)
+        rows = {}
+        for note in notes: rows.setdefault(note['t'], set()).add(note['lane'])
+        quads = [t for t, lanes in rows.items() if len(lanes) == 4]
+        self.assertGreater(len(quads), 0)
+        self.assertLessEqual(len(quads), int(len(attacks)*.02))
+        self.assertTrue(any(len(lanes)==3 for lanes in rows.values()))
+        self.assertTrue(all(b-a >= 8 for a,b in zip(quads,quads[1:])))
+
+    def test_quiet_template_cannot_thin_an_energetic_repeat(self):
+        first = list(range(10,210,25)); second = [at+300 for at in first]
+        pool = first+second; intensity = np.ones(600); intensity[first] = .1
+        chosen = phrase_onsets(pool, np.ones(600), .22, 0, .01, intensity=intensity)
+        self.assertGreater(sum(at in second for at in chosen), sum(at in first for at in chosen))
