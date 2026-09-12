@@ -21,6 +21,7 @@ if __name__ == '__main__' and len(sys.argv) == 3 and sys.argv[1] == '--cleanup-o
     raise SystemExit(0)
 
 from charting import generate_charts
+from sources import CATEGORIES, source_info
 from instruments import MODEL, SOURCES, LABELS, selected_paths
 from hype import detect_hype
 from timing import estimate_timing, parse_timing_points
@@ -344,18 +345,20 @@ def attach_video(source, library, temp, job):
     return [str(folder)], []
 
 def download_youtube_audio(url, temp, job):
-    url = validate_youtube(url)
+    provider, url = source_info(url)
     work = temp / 'pack'
     work.mkdir()
     job.run([binary('yt-dlp'), '--ignore-config', '--no-playlist', '--no-progress', '--no-warnings',
              '--js-runtimes', 'deno:' + binary('deno'), '--socket-timeout', '30', '--retries', '2',
              '--match-filter', 'duration <= 900 & !is_live', '--max-filesize', '200M',
              '--ffmpeg-location', str(Path(binary('ffmpeg')).parent), '-f', 'bestaudio/best',
-             '--write-info-json', '-o', str(temp / 'download.%(ext)s'), '--', url], 'Downloading YouTube audio…', 5)
+             '--write-info-json', '-o', str(temp / 'download.%(ext)s'), '--', url], 'Downloading ' + provider + ' audio…', 5)
     info_file = temp / 'download.info.json'
     if not info_file.exists():
         raise ValueError('Video unavailable, live, or longer than 15 minutes')
     info = json.loads(info_file.read_text(encoding='utf-8'))
+    if info.get('_type') in ('playlist', 'multi_video') or info.get('entries') is not None:
+        raise ValueError('Import one song at a time; playlists and profiles are unsupported.')
     audio = [p for p in temp.glob('download.*') if p.suffix not in {'.json', '.part', '.ytdl'}]
     if len(audio) != 1:
         raise ValueError('Audio download did not produce a single complete file')
@@ -363,15 +366,35 @@ def download_youtube_audio(url, temp, job):
     return work, duration, info
 
 
+def save_artwork(info, work):
+    # Keep provider artwork per song so deleting one cover does not affect others.
+    import io
+    import urllib.request
+    from PIL import Image
+    url = str(info.get('thumbnail') or '')
+    host = urllib.parse.urlparse(url).hostname or ''
+    allowed = ('ytimg.com', 'sndcdn.com')
+    if not url.startswith('https://') or not any(host == domain or host.endswith('.'+domain) for domain in allowed): return
+    try:
+        with urllib.request.urlopen(url, timeout=8) as response: raw=response.read(4*1024*1024+1)
+        if len(raw)>4*1024*1024: return
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.width*image.height>16_000_000: return
+            image.thumbnail((960,960))
+            image.convert('RGB').save(work/'thumbnail.jpg', quality=85)
+    except (OSError, ValueError): pass
+
+
 def import_youtube(url, library, temp, job):
-    url = validate_youtube(url)
+    provider, url = source_info(url)
     work, duration, info = download_youtube_audio(url, temp, job)
     charts = instrument_charts(work / 'audio.wav', temp, job)
-    pack = {'schema': 1, 'id': 'yt-' + info['id'], 'category': 'YouTube', 'title': info.get('title', 'YouTube import'),
+    pack = {'schema': 1, 'id': ('yt-' + info['id']) if provider == 'YouTube' else provider.lower() + '-' + hashlib.sha256(url.encode()).hexdigest()[:24], 'category': provider, 'title': info.get('title', 'YouTube import'),
             'artist': info.get('uploader', 'Unknown'), 'audio': 'audio.wav', 'duration': duration,
             'charts': charts, 'timing': estimate_timing(work / 'audio.wav'), 'source': url, 'generator': 'htdemucs_6s + adaptive instruments + evidence-based sustains v10'}
     pack['hype'] = song_hype(work / 'audio.wav', temp, job, pack.get('charts'))
-    warnings = optional_background(url, work / 'background.ogv', temp, job)
+    warnings = optional_background(url, work / 'background.ogv', temp, job) if provider == 'YouTube' else []
+    save_artwork(info, work)
     if (work / 'background.ogv').is_file():
         pack['video'] = 'background.ogv'
     if (work / 'background.png').is_file(): pack['background_image'] = 'background.png'
@@ -386,8 +409,9 @@ def import_card(source, library, temp, job):
         return [str(target)], []
     work, duration, info = download_youtube_audio(pack['source'], temp, job)
     if abs(duration - pack['duration']) > 0.5:
-        raise ValueError('YouTube audio duration has changed; these shared charts may no longer sync. Import stopped.')
-    warnings = optional_background(pack['source'], work / 'background.ogv', temp, job)
+        raise ValueError('Source audio duration has changed; these shared charts may no longer sync. Import stopped.')
+    warnings = optional_background(pack['source'], work / 'background.ogv', temp, job) if pack['category'] == 'YouTube' else []
+    save_artwork(info, work)
     if (work / 'background.ogv').is_file(): pack['video'] = 'background.ogv'
     if (work / 'background.png').is_file(): pack['background_image'] = 'background.png'
     job.update('Saving the shared charts unchanged…', 99)
@@ -419,8 +443,8 @@ def regenerate_song(source, library, temp, job):
     pack_file = folder / 'song.json'
     original = pack_file.read_bytes()
     pack = json.loads(original)
-    if pack.get('category') != 'YouTube' or pack.get('audio') != 'audio.wav':
-        raise ValueError('Only YouTube songs can be regenerated')
+    if pack.get('category') not in CATEGORIES or pack.get('audio') != 'audio.wav':
+        raise ValueError('Only generated online songs can be regenerated')
     audio_path = folder / 'audio.wav'
     if not audio_path.is_file():
         raise ValueError('Cached audio is missing')
@@ -446,7 +470,7 @@ def analyze_song_hype(source, library, temp, job):
     if pack.get('audio') != 'audio.wav':
         raise ValueError('Unsupported song audio')
     audio = folder / 'audio.wav'
-    if pack.get('category') == 'YouTube':
+    if pack.get('category') in CATEGORIES:
         separate_stems(audio, temp, job)
         pack['hype'] = song_hype(audio, temp, job, pack.get('charts'))
     else:
@@ -471,11 +495,17 @@ def main():
         library.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='.import-', dir=library) as tmp:
             job.update('Preparing import…', 1)
-            if request['kind'] == 'card_import':
+            if request['kind'] in ('manage_list', 'manage_remove'):
+                from song_manager import scan, remove
+                covers = library.parent / 'covers'
+                if request['kind'] == 'manage_remove': remove(library, covers, request['source'], request['action'])
+                atomic_json(job.result, {'state': 'done', 'message': 'Song storage updated.', 'progress': 100, 'manager_rows': scan(library, covers)})
+                return
+            elif request['kind'] == 'card_import':
                 paths, warnings = import_card(request['source'], library, Path(tmp), job)
             elif request['kind'] == 'card_export':
                 paths, warnings = export_card(request, job)
-            elif request['kind'] == 'youtube':
+            elif request['kind'] in ('youtube', 'link'):
                 paths, warnings = import_youtube(request['source'], library, Path(tmp), job)
             elif request['kind'] == 'hype':
                 paths, warnings = analyze_song_hype(request['source'], library, Path(tmp), job)

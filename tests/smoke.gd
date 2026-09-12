@@ -165,6 +165,7 @@ func run_checks() -> void:
 	run_hold_bar_checks(scene)
 	run_arcade_checks(scene)
 	await run_video_checks(scene)
+	run_manager_checks(scene)
 	scene.queue_free()
 	await process_frame
 	await process_frame
@@ -356,7 +357,7 @@ func check_menu_update(scene) -> void:
 	check(scene.ui.find_child("MenuLeaderboard", true, false) != null, "Inline personal bests exist")
 	check(scene.ui.find_child("MultiplayerMenu", true, false) is MenuButton, "Multiplayer dropdown exists")
 	var categories = scene.ui.find_child("SongCategory", true, false)
-	check(categories.item_count == 3, "Three requested song categories")
+	check(categories.item_count == 4, "All, YouTube, SoundCloud and osu categories")
 	scene.move_song(1)
 	check(scene.selected.id == other.id and scene.choices[0].instrument == "Bass" and scene.choices[0].difficulty == "Expert", "Song switch preserves part and difficulty")
 	var instrument = scene.ui.find_child("Instrument0", true, false)
@@ -491,3 +492,12 @@ func run_hype_calibration_checks(scene) -> void:
 	scene.show_settings()
 	for key in ["bonus", "sensitivity", "glow", "rings", "shake"]:
 		check(scene.ui.find_child("Hype_" + key, true, false) is HSlider, "Hype setting exists: " + key)
+
+func run_manager_checks(scene) -> void:
+	scene.manager_rows = [{"title": "Storage fixture", "category": "SoundCloud", "path": "unused-test-path", "bytes": 1500000, "background_bytes": 400000, "thumbnail_bytes": 20000}]
+	scene.show_song_manager(false)
+	check(scene.screen == "song_manager" and not scene.preview.playing and not scene.covers.enabled, "Manager pauses previews and cover requests")
+	check(scene.worker_pid <= 0, "Rendering manager does not launch destructive work")
+	scene.show_menu()
+	check(scene.covers.enabled, "Cover fetching resumes after manager")
+	check(scene.covers.texture_for({"thumbnail_disabled": true, "category": "YouTube", "source": "https://www.youtube.com/watch?v=abcdefghijk"}) == null, "Deleted thumbnails stay suppressed")

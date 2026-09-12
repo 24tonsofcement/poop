@@ -1,3 +1,11 @@
+## SoundCloud imports and Song Manager — 1.10.0
+
+The shared **Import song** box accepts individual YouTube and SoundCloud links. Songs are filed under their actual source category; osu!mania retains its own category. SoundCloud uses the same instrument/chart generator, with optional track artwork and no YouTube video request. Regeneration and PNG source cards support both providers. Spotify, Bandcamp, Audius and local audio import are not included. Restricted/unavailable tracks can still fail through the provider/downloader.
+
+Open **Settings → Storage → Song Manager** to see each installed song's total MB, background MB and thumbnail MB. Delete an entire song, only its video/still background, or only its thumbnail. Artwork removal preserves audio/charts; song removal preserves leaderboard history. Thumbnail removal is saved as an opt-out to prevent immediate redownloading. Sizes use decimal MB and include a song's legacy shared cover cache where applicable. The bundled demo is excluded. Leave multiplayer before managing files; previews stop during maintenance.
+
+Validation: 97 Python tests cover source/category validation, SoundCloud card round trips, background-download bypass, size totals, deletion boundaries and thumbnail opt-out. Godot checks include the new category, Storage tab and manager navigation. Live SoundCloud downloads and packaged UI validation require the release environment.
+
 ## Grades, adaptive instruments and storage cleanup — 1.9.0
 
 - Results and personal-best tables show osu!mania-style accuracy grades: SS = 100%, S > 95%, A > 90%, B > 80%, C > 70%, otherwise D. Grade uses unrounded raw judgement accuracy, independent of hold/combo/hype points; old records gain grades automatically. [Threshold reference](https://osu.ppy.sh/wiki/en/Gameplay/Grade).

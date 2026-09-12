@@ -65,8 +65,8 @@ func run_checks() -> void:
 	await create_timer(0.5).timeout
 	scene.show_settings()
 	var categories = scene.ui.find_child("SettingsCategories", true, false) as TabContainer
-	check(categories != null and categories.get_tab_count() == 7, "Settings has seven focused categories")
-	for control_name in ["WindowMode", "NoteSpeed", "NoteStyle", "VideoDimming", "HighwayTransparency", "ReducedMotion"]:
+	check(categories != null and categories.get_tab_count() == 8, "Settings has eight focused categories")
+	for control_name in ["WindowMode", "NoteSpeed", "NoteStyle", "VideoDimming", "HighwayTransparency", "ReducedMotion", "SongManager"]:
 		check(scene.ui.find_child(control_name, true, false) != null, "Setting preserved: " + control_name)
 	scene.set_fullscreen(true)
 	check(scene.fullscreen, "Fullscreen enabled")
@@ -81,7 +81,7 @@ func run_checks() -> void:
 	check(scene.fullscreen, "F11 enables fullscreen")
 	scene._input(shortcut)
 	check(not scene.fullscreen, "F11 restores windowed mode")
-	for index in range(7):
+	for index in range(8):
 		categories.current_tab = index
 		await process_frame
 		await process_frame

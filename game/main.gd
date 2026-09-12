@@ -12,6 +12,8 @@ var ui_motion = preload("res://game/ui_motion.gd").new()
 var fullscreen: bool = false
 var last_card_export_dir: String = ""
 var settings_tab: int = 0
+var manager_rows: Array = []
+const GENERATED_CATEGORIES = ["YouTube", "SoundCloud"]
 var import_expanded: bool = false
 var reduced_motion: bool = false
 var ui_clock: float = 0.0
@@ -308,8 +310,10 @@ func scan_songs() -> void:
 			cap_generated_holds(data)
 			songs.append(data)
 	if not selected.is_empty():
+		var selected_id: String = str(selected.id)
+		selected = {}
 		for song in songs:
-			if song.id == selected.id:
+			if song.id == selected_id:
 				selected = song
 				break
 	if selected.is_empty() and not songs.is_empty():
@@ -348,6 +352,7 @@ func box_into(parent: Node, horizontal: bool = false) -> BoxContainer:
 	return box
 
 func show_menu() -> void:
+	covers.enabled = true
 	if online.connected() and not online.leaving:
 		show_online_menu()
 		return
@@ -394,8 +399,8 @@ func show_menu() -> void:
 	var library_row = box_into(stage, true)
 	var cats = OptionButton.new()
 	cats.name = "SongCategory"
-	var category_values: Array = ["All songs", "YouTube", "osu!mania"]
-	for item in ["All songs", "YouTube songs", "osu beatmaps"]:
+	var category_values: Array = ["All songs", "YouTube", "SoundCloud", "osu!mania"]
+	for item in ["All songs", "YouTube songs", "SoundCloud songs", "osu beatmaps"]:
 		cats.add_item(item)
 	cats.select(maxi(0, category_values.find(category)))
 	cats.custom_minimum_size.x = 190
@@ -509,22 +514,22 @@ func show_menu() -> void:
 	import_card_button.disabled = worker_pid > 0
 	var export_button = button_into(cards_row, "Export card", export_song_card)
 	export_button.name = "ExportSongCard"
-	export_button.disabled = worker_pid > 0 or selected.get("category", "") != "YouTube"
-	export_button.tooltip_text = "Share the thumbnail, charts and YouTube link. The receiver downloads the audio and video."
+	export_button.disabled = worker_pid > 0 or not selected.get("category", "") in GENERATED_CATEGORIES
+	export_button.tooltip_text = "Share the thumbnail, charts and source link. The receiver downloads the audio and video."
 	label_into(import_drawer, "Send PNG cards as original files/documents; photo compression can remove their charts.", 13, MUTED)
 	var import_row = box_into(import_drawer, true)
 	label_into(import_row, "IMPORT", 16, COLORS[0])
 	button_into(import_row, "osu / osz", choose_osu).disabled = worker_pid > 0
 	var url = LineEdit.new()
-	url.placeholder_text = "YouTube video link…"
+	url.placeholder_text = "YouTube or SoundCloud song link…"
 	url.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	import_row.add_child(url)
-	button_into(import_row, "Import YouTube", func(): start_import("youtube", url.text.strip_edges())).disabled = worker_pid > 0
+	button_into(import_row, "Import song", func(): start_import("link", url.text.strip_edges())).disabled = worker_pid > 0
 	button_into(import_row, "Songs folder", func(): OS.shell_open(song_root))
-	if not selected.is_empty() and selected.get("category", "") == "YouTube":
+	if not selected.is_empty() and selected.get("category", "") in GENERATED_CATEGORIES:
 		var regen_row = box_into(import_drawer, true)
 		button_into(regen_row, "Regenerate chart", func(): start_import("regenerate", str(selected.folder))).disabled = worker_pid > 0
-		if not FileAccess.file_exists(str(selected.folder).path_join("background.ogv")) and not FileAccess.file_exists(str(selected.folder).path_join("background.png")):
+		if selected.get("category", "") == "YouTube" and not FileAccess.file_exists(str(selected.folder).path_join("background.ogv")) and not FileAccess.file_exists(str(selected.folder).path_join("background.png")):
 			button_into(regen_row, "Download video", func(): start_import("video", str(selected.folder))).disabled = worker_pid > 0
 	status_label = label_into(root, last_message, 14, COLORS[0])
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -859,6 +864,11 @@ func show_settings() -> void:
 	var effects = settings_page(tabs, "Effects", "LIGHT SHOW", "Choose which gameplay effects you want to see.")
 	var hype_panel = settings_page(tabs, "Hype", "PEAK ENERGY", "Bonus scoring and song-synced celebrations.")
 	var accessibility = settings_page(tabs, "Accessibility", "COMFORT FIRST", "Keep the interface comfortable for you.")
+	var storage = settings_page(tabs, "Storage", "SONG STORAGE", "Manage downloaded songs and artwork.")
+	var manager_button = button_into(storage, "Song Manager", show_song_manager)
+	manager_button.name = "SongManager"
+	manager_button.disabled = worker_pid > 0 or online.connected()
+	label_into(storage, "Delete songs, backgrounds or thumbnails and see their disk usage. Leave the lobby before managing files.", 16, MUTED)
 	label_into(display, "Window mode", 18)
 	var mode = OptionButton.new()
 	mode.name = "WindowMode"
@@ -1087,10 +1097,10 @@ func choose_song_card() -> void:
 	picker.popup_centered_ratio(0.75)
 
 func export_song_card() -> void:
-	if selected.get("category", "") != "YouTube" or worker_pid > 0: return
+	if not selected.get("category", "") in GENERATED_CATEGORIES or worker_pid > 0: return
 	var texture = covers.texture_for(selected)
 	if texture == null:
-		last_message = "The YouTube thumbnail is not ready. Wait for it to load, then export again."
+		last_message = "The song thumbnail is not available. Wait for it to load, then export again."
 		show_menu()
 		return
 	var snapshot: Dictionary = selected.duplicate(true)
@@ -1137,7 +1147,7 @@ func start_import(kind: String, source: String, extra: Dictionary = {}) -> void:
 	if worker_pid > 0:
 		return
 	if source.is_empty():
-		last_message = "Enter a YouTube video link first."
+		last_message = "Enter a YouTube or SoundCloud song link first."
 		show_menu()
 		return
 	var base: String = OS.get_executable_path().get_base_dir()
@@ -1169,7 +1179,10 @@ func start_import(kind: String, source: String, extra: Dictionary = {}) -> void:
 	args.append_array(["--request", request])
 	worker_pid = OS.create_process(executable, args)
 	last_message = "Starting importer…" if worker_pid > 0 else "Could not launch importer. See BUILD-WINDOWS.md."
-	show_menu()
+	if kind.begins_with("manage_"):
+		show_song_manager(false)
+	else:
+		show_menu()
 
 func cancel_import() -> void:
 	if worker_pid > 0:
@@ -1186,11 +1199,18 @@ func poll_import() -> void:
 		data = JSON.parse_string(FileAccess.get_file_as_string(job_result))
 	if data is Dictionary:
 		last_message = str(data.get("message", "Working…"))
-		if screen == "menu" and is_instance_valid(status_label):
+		if screen in ["menu", "song_manager"] and is_instance_valid(status_label):
 			status_label.text = last_message
-			import_progress.value = float(data.get("progress", 0))
+			if is_instance_valid(import_progress): import_progress.value = float(data.get("progress", 0))
 		if data.get("state") in ["done", "error"]:
 			worker_pid = -1
+			if screen == "song_manager":
+				if data.has("manager_rows"):
+					manager_rows = data.manager_rows
+					covers.clear_cached_textures()
+					scan_songs()
+				show_song_manager(false)
+				return
 			if data.state == "done":
 				var exported_path: String = str(data.get("exported_path", ""))
 				if not exported_path.is_empty():
@@ -1478,6 +1498,9 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		show_menu()
 		return
+	if screen == "song_manager" and key == KEY_ESCAPE and event.pressed:
+		if worker_pid <= 0: show_settings()
+		return
 	if screen == "settings" and key == KEY_ESCAPE and event.pressed:
 		show_menu()
 		get_viewport().set_input_as_handled()
@@ -1631,7 +1654,7 @@ func multiplier_for(streak: int) -> int:
 	return 1
 
 func cap_generated_holds(song: Dictionary) -> void:
-	if song.get("category", "") != "YouTube":
+	if not song.get("category", "") in GENERATED_CATEGORIES:
 		return
 	for part in song.charts:
 		for difficulty in song.charts[part]:
@@ -2436,3 +2459,53 @@ func song_folder_name(song: Dictionary) -> String:
 	if base in ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"]:
 		title = "_" + title
 	return title + " [" + str(song.get("id", "song")).sha256_text().left(10) + "]"
+
+func show_song_manager(refresh: bool = true) -> void:
+	if online.connected(): return
+	if screen == "settings" and not commit_preferences(): return
+	stop_preview()
+	stop_background_video()
+	covers.enabled = false
+	covers.clear_cached_textures()
+	screen = "song_manager"
+	clear_ui()
+	var margin = MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 24)
+	ui.add_child(margin)
+	var root = box_into(margin)
+	var heading = box_into(root, true)
+	label_into(heading, "SONG MANAGER", 30, COLORS[0])
+	button_into(heading, "Refresh", func(): show_song_manager(true)).disabled = worker_pid > 0
+	button_into(heading, "Back to settings", show_settings).disabled = worker_pid > 0
+	label_into(root, "Sizes include audio, charts, backgrounds and cached artwork (MB). Scores are kept when a song is deleted.", 16, MUTED)
+	status_label = label_into(root, last_message, 16, COLORS[1])
+	var scroll = ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.add_child(scroll)
+	var listing = box_into(scroll)
+	listing.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for item in manager_rows:
+		var panel = box_into(listing)
+		var song_title = label_into(panel, str(item.title) + " · " + str(item.category), 20)
+		song_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label_into(panel, "Total %.2f MB   /   Background %.2f MB   /   Thumbnail %.2f MB" % [float(item.bytes)/1000000.0, float(item.background_bytes)/1000000.0, float(item.thumbnail_bytes)/1000000.0], 16, MUTED)
+		var actions = box_into(panel, true)
+		button_into(actions, "Delete song", func(): confirm_song_removal(item, "song")).disabled = worker_pid > 0
+		button_into(actions, "Delete background", func(): confirm_song_removal(item, "background")).disabled = worker_pid > 0 or int(item.background_bytes) == 0
+		button_into(actions, "Delete thumbnail", func(): confirm_song_removal(item, "thumbnail")).disabled = worker_pid > 0 or int(item.thumbnail_bytes) == 0
+	if manager_rows.is_empty(): label_into(listing, "No downloaded songs found." if worker_pid <= 0 else "Reading song sizes…", 18)
+	if refresh and worker_pid <= 0: start_import("manage_list", song_root)
+
+func confirm_song_removal(item: Dictionary, action: String) -> void:
+	if worker_pid > 0 or online.connected(): return
+	var dialog = ConfirmationDialog.new()
+	dialog.title = "Delete " + action
+	dialog.dialog_text = "Delete " + action + " for “" + str(item.title) + "”?" + ("\nThe song will need importing again." if action == "song" else "\nThe audio and charts will stay playable.")
+	dialog.confirmed.connect(func():
+		start_import("manage_remove", str(item.path), {"action": action})
+		dialog.queue_free())
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered()

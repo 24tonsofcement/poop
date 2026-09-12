@@ -27,6 +27,14 @@ func video_id(song: Dictionary) -> String:
 	return found.get_string(1) if found != null else ""
 
 func texture_for(song: Dictionary) -> Texture2D:
+	if song.get("thumbnail_disabled", false): return null
+	var local_path: String = str(song.get("folder", "")).path_join("thumbnail.jpg")
+	if FileAccess.file_exists(local_path):
+		if textures.has(local_path): return textures[local_path]
+		var local_image = Image.load_from_file(local_path)
+		if local_image != null:
+			remember(local_path, local_image)
+			return textures[local_path]
 	var id: String = video_id(song)
 	if id.is_empty():
 		return null
@@ -72,3 +80,11 @@ func completed(result: int, status: int, _headers: PackedStringArray, body: Pack
 				file.close()
 			available.emit(id)
 	call_deferred("next_request")
+
+func clear_cached_textures() -> void:
+	textures.clear()
+	pending.clear()
+	attempted.clear()
+	if not current.is_empty():
+		http.cancel_request()
+		current = ""

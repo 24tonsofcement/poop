@@ -27,10 +27,11 @@ def number(value):
 
 
 def validate(pack):
-    if not isinstance(pack, dict) or pack.get('schema') != 1 or pack.get('category') != 'YouTube':
-        raise ValueError('This card must contain a YouTube song.')
-    from worker import validate_youtube
-    source = validate_youtube(pack.get('source', ''))
+    from sources import CATEGORIES, source_info
+    if not isinstance(pack, dict) or pack.get('schema') != 1 or pack.get('category') not in CATEGORIES:
+        raise ValueError('This card must contain a supported online song.')
+    category, source = source_info(pack.get('source', ''))
+    if category != pack['category']: raise ValueError('Card category does not match its source.')
     duration = pack.get('duration')
     if not number(duration) or not 0 < duration <= 900:
         raise ValueError('Invalid song duration.')
@@ -71,7 +72,7 @@ def validate(pack):
                 raise ValueError('Invalid hype section.')
     keep = ['schema', 'title', 'artist', 'duration', 'charts', 'timing', 'hype', 'generator', 'credits']
     result = {key: copy.deepcopy(pack[key]) for key in keep if key in pack}
-    result.update(category='YouTube', source=source, audio='audio.wav')
+    result.update(category=category, source=source, audio='audio.wav')
     result.setdefault('title', 'YouTube song')
     result.setdefault('artist', 'Unknown')
     canonical(result)  # Reject non-finite values in optional metadata too.
@@ -169,7 +170,7 @@ def render_card(thumbnail, title):
     for i, line in enumerate(lines):
         while draw.textlength(line, font=heading) > width - 52: line = line[:-1]
         draw.text((18, art.height + 43 + i * 27), line, font=heading, fill='#e4edf9')
-    draw.text((18, art.height + 113), 'CHARTS + YOUTUBE LINK / KEEP ORIGINAL PNG', font=caption, fill='#9aabc4')
+    draw.text((18, art.height + 113), 'CHARTS + SOURCE LINK / KEEP ORIGINAL PNG', font=caption, fill='#9aabc4')
     output = io.BytesIO()
     canvas.save(output, format='PNG')
     return output.getvalue()
