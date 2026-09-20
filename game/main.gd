@@ -11,6 +11,7 @@ const DiscButton = preload("res://game/disc_button.gd")
 var ui_motion = preload("res://game/ui_motion.gd").new()
 var fullscreen: bool = false
 var last_card_export_dir: String = ""
+var last_card_import_dir: String = ""
 var settings_tab: int = 0
 var manager_rows: Array = []
 const GENERATED_CATEGORIES = ["YouTube", "SoundCloud"]
@@ -167,9 +168,7 @@ func _ready() -> void:
 	add_child(background_video)
 	resized.connect(layout_background_video)
 	layout_background_video()
-	get_window().files_dropped.connect(func(files):
-		if files.size() == 1 and str(files[0]).get_extension().to_lower() == "png" and worker_pid <= 0 and screen != "game":
-			start_import("card_import", str(files[0])))
+	get_window().files_dropped.connect(import_song_cards)
 	load_settings()
 	score_store.load_data()
 	apply_theme()
@@ -214,6 +213,7 @@ func load_settings() -> void:
 			reduced_motion = bool(data.get("reduced_motion", false))
 			fullscreen = bool(data.get("fullscreen", false))
 			last_card_export_dir = str(data.get("last_card_export_dir", ""))
+			last_card_import_dir = str(data.get("last_card_import_dir", ""))
 			var saved_effects = data.get("visual_effects", {})
 			if saved_effects is Dictionary:
 				for effect in visual_effects:
@@ -260,7 +260,7 @@ func load_settings() -> void:
 func save_settings() -> void:
 	var f = FileAccess.open("user://settings.json", FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"last_card_export_dir": last_card_export_dir, "fullscreen": fullscreen, "reduced_motion": reduced_motion, "hype_settings": hype_settings, "music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
+		f.store_string(JSON.stringify({"last_card_import_dir": last_card_import_dir, "last_card_export_dir": last_card_export_dir, "fullscreen": fullscreen, "reduced_motion": reduced_motion, "hype_settings": hype_settings, "music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
 
 func valid_song(data) -> bool:
 	if not data is Dictionary or data.get("schema", 0) != 1 or not data.get("charts") is Dictionary:
@@ -509,14 +509,19 @@ func show_menu() -> void:
 	var import_drawer = box_into(import_content)
 	import_drawer.visible = import_expanded or worker_pid > 0
 	var cards_row = box_into(import_content, true)
-	var import_card_button = button_into(cards_row, "Import song card", choose_song_card)
+	var import_card_button = button_into(cards_row, "Import song cards", choose_song_card)
 	import_card_button.name = "ImportSongCard"
 	import_card_button.disabled = worker_pid > 0
 	var export_button = button_into(cards_row, "Export card", export_song_card)
 	export_button.name = "ExportSongCard"
+	var open_export = button_into(cards_row, "Open export folder", open_card_export_folder)
+	open_export.name = "OpenCardExportFolder"
+	open_export.disabled = last_card_export_dir.is_empty() or not DirAccess.dir_exists_absolute(last_card_export_dir)
+	open_export.tooltip_text = last_card_export_dir if not last_card_export_dir.is_empty() else "Export a card to choose a folder first."
+
 	export_button.disabled = worker_pid > 0 or not selected.get("category", "") in GENERATED_CATEGORIES
 	export_button.tooltip_text = "Share the thumbnail, charts and source link. The receiver downloads the audio and video."
-	label_into(import_drawer, "Send PNG cards as original files/documents; photo compression can remove their charts.", 13, MUTED)
+	label_into(import_drawer, "Select multiple PNG cards or drag them onto this window. Share originals; photo compression can remove their charts.", 13, MUTED)
 	var import_row = box_into(import_drawer, true)
 	label_into(import_row, "IMPORT", 16, COLORS[0])
 	button_into(import_row, "osu / osz", choose_osu).disabled = worker_pid > 0
@@ -1085,16 +1090,46 @@ func player_setup(parent: Node, p: int) -> void:
 		profile_box.add_child(HSeparator.new())
 
 func choose_song_card() -> void:
+	if worker_pid > 0: return
 	var picker = FileDialog.new()
+	picker.name = "CardImportPicker"
 	picker.access = FileDialog.ACCESS_FILESYSTEM
-	picker.file_mode = FileDialog.FILE_MODE_OPEN_FILE
-	picker.filters = PackedStringArray(["*.png ; Pulse Four data cards"])
-	picker.file_selected.connect(func(path):
-		start_import("card_import", path)
+	picker.file_mode = FileDialog.FILE_MODE_OPEN_FILES
+	picker.filters = PackedStringArray(["*.png ; Song data cards"])
+	if not last_card_import_dir.is_empty() and DirAccess.dir_exists_absolute(last_card_import_dir):
+		picker.current_dir = last_card_import_dir
+	picker.files_selected.connect(func(paths):
+		import_song_cards(paths)
 		picker.queue_free())
 	picker.canceled.connect(picker.queue_free)
 	add_child(picker)
 	picker.popup_centered_ratio(0.75)
+
+func import_song_cards(files: PackedStringArray) -> void:
+	if worker_pid > 0 or screen == "game" or online.connected():
+		last_message = "Finish the current import or round and leave the lobby before importing cards."
+		if is_instance_valid(status_label): status_label.text = last_message
+		return
+	var cards: PackedStringArray = []
+	for file in files:
+		if file.get_extension().to_lower() == "png" and not cards.has(file):
+			cards.append(file)
+	if cards.is_empty():
+		last_message = "Drop one or more PNG song cards onto the game window."
+		if is_instance_valid(status_label): status_label.text = last_message
+		return
+	last_card_import_dir = cards[cards.size() - 1].get_base_dir()
+	save_settings()
+	start_import("card_batch", cards[0], {"sources": Array(cards)})
+
+func open_card_export_folder() -> void:
+	if last_card_export_dir.is_empty() or not DirAccess.dir_exists_absolute(last_card_export_dir):
+		last_message = "The saved export folder is unavailable. Export a card to choose a folder."
+		show_menu()
+		return
+	if OS.shell_open(last_card_export_dir) != OK:
+		last_message = "Could not open the export folder: " + last_card_export_dir
+		show_menu()
 
 func export_song_card() -> void:
 	if not selected.get("category", "") in GENERATED_CATEGORIES or worker_pid > 0: return

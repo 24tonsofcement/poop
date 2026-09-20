@@ -418,6 +418,43 @@ def import_card(source, library, temp, job):
     return [str(commit_pack(work, library, pack))], warnings
 
 
+def import_cards(sources, library, temp, job):
+    """Import independently so one bad card cannot discard the rest of a batch."""
+    if not isinstance(sources, list) or not sources or len(sources) > 500 or not all(isinstance(p,str) for p in sources):
+        raise ValueError('Select between 1 and 500 PNG song cards.')
+    resolved = [str(Path(p).resolve()) for p in sources]
+    unique = list({os.path.normcase(p): p for p in resolved}.values())
+    paths, warnings = [], []
+    successful = 0
+    cancelled = False
+    for index, source in enumerate(unique):
+        if getattr(job, 'cancel', None) is not None and job.cancel.exists():
+            cancelled = True
+            break
+        label = f'Card {index+1}/{len(unique)} · {Path(source).name}: '
+        class CardProgress:
+            cancel = getattr(job, 'cancel', None)
+            def update(self, message, progress=0):
+                job.update(label+message, (index*100+progress)/len(unique))
+            def run(self, args, message, progress=0):
+                job.run(args, label+message, (index*100+progress)/len(unique))
+        try:
+            with tempfile.TemporaryDirectory(prefix='card-', dir=temp) as folder:
+                imported, notes = import_card(source, library, Path(folder), CardProgress())
+            paths.extend(path for path in imported if path not in paths)
+            warnings.extend(Path(source).name + ': ' + note for note in notes)
+            successful += 1
+        except Exception as error:
+            if getattr(job, 'cancel', None) is not None and job.cancel.exists():
+                cancelled = True
+                break
+            warnings.append(Path(source).name + ': ' + str(error)[-1000:])
+    message = f'Imported {successful}/{len(unique)} cards.'
+    if cancelled: message += ' Batch cancelled; completed imports were kept.'
+    elif successful < len(unique): message += ' Some cards could not be imported.'
+    return paths, warnings, message
+
+
 def export_card(request, job):
     from song_card import encode, decode, read_bounded, render_card
     job.update('Embedding charts into the thumbnail…', 30)
@@ -500,6 +537,10 @@ def main():
                 covers = library.parent / 'covers'
                 if request['kind'] == 'manage_remove': remove(library, covers, request['source'], request['action'])
                 atomic_json(job.result, {'state': 'done', 'message': 'Song storage updated.', 'progress': 100, 'manager_rows': scan(library, covers)})
+                return
+            elif request['kind'] == 'card_batch':
+                paths, warnings, message = import_cards(request.get('sources'), library, Path(tmp), job)
+                atomic_json(job.result, {'state': 'done', 'message': message, 'progress': 100, 'paths': paths, 'warnings': warnings})
                 return
             elif request['kind'] == 'card_import':
                 paths, warnings = import_card(request['source'], library, Path(tmp), job)

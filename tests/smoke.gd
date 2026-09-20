@@ -166,6 +166,7 @@ func run_checks() -> void:
 	run_arcade_checks(scene)
 	await run_video_checks(scene)
 	run_manager_checks(scene)
+	run_card_folder_checks(scene)
 	scene.queue_free()
 	await process_frame
 	await process_frame
@@ -501,3 +502,33 @@ func run_manager_checks(scene) -> void:
 	scene.show_menu()
 	check(scene.covers.enabled, "Cover fetching resumes after manager")
 	check(scene.covers.texture_for({"thumbnail_disabled": true, "category": "YouTube", "source": "https://www.youtube.com/watch?v=abcdefghijk"}) == null, "Deleted thumbnails stay suppressed")
+
+func run_card_folder_checks(scene) -> void:
+	var previous_import: String = scene.last_card_import_dir
+	var previous_export: String = scene.last_card_export_dir
+	var import_folder: String = ProjectSettings.globalize_path("user://card-picker-import")
+	var export_folder: String = ProjectSettings.globalize_path("user://card-picker-export")
+	DirAccess.make_dir_recursive_absolute(import_folder)
+	DirAccess.make_dir_recursive_absolute(export_folder)
+	scene.last_card_import_dir = import_folder
+	scene.last_card_export_dir = export_folder
+	scene.save_settings()
+	scene.last_card_import_dir = ""
+	scene.last_card_export_dir = ""
+	scene.load_settings()
+	check(scene.last_card_import_dir == import_folder and scene.last_card_export_dir == export_folder, "Card import/export folders persist independently")
+	scene.show_menu()
+	var open_export_button = scene.ui.find_child("OpenCardExportFolder", true, false) as Button
+	check(open_export_button != null and not open_export_button.disabled and open_export_button.tooltip_text == export_folder, "Open export folder uses saved directory")
+	scene.choose_song_card()
+	var card_picker = scene.find_child("CardImportPicker", false, false) as FileDialog
+	check(card_picker != null and card_picker.file_mode == FileDialog.FILE_MODE_OPEN_FILES, "Card picker accepts multiple PNGs")
+	if card_picker != null:
+		check(card_picker.current_dir.trim_suffix("/") == import_folder.trim_suffix("/"), "Card picker restores import folder")
+		card_picker.queue_free()
+	check(scene.get_window().files_dropped.is_connected(scene.import_song_cards), "Window drops route to batch card importer")
+	scene.last_card_import_dir = previous_import
+	scene.last_card_export_dir = previous_export
+	scene.save_settings()
+	DirAccess.remove_absolute(import_folder)
+	DirAccess.remove_absolute(export_folder)

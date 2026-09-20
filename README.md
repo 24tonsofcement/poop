@@ -1,3 +1,11 @@
+## Batch card import and remembered folders — 1.10.1
+
+**Import song cards** allows selecting multiple PNGs. Dropping one or several PNG cards onto the game window uses the same sequential batch importer. Invalid cards are reported without stopping the rest; cancelling keeps completed imports and stops remaining work. Importing is available outside active gameplay and lobbies while the importer is idle.
+
+The last import folder and last successful export folder are saved independently across restarts. **Open export folder**, beside Export card, opens the saved destination in the system file manager. Missing remembered folders fall back to the file picker's normal location. Existing settings remain compatible.
+
+Validation includes batch isolation, invalid-card continuation, duplicate paths, cancellation and independent folder persistence/multi-selection in the Godot smoke suite.
+
 ## SoundCloud imports and Song Manager — 1.10.0
 
 The shared **Import song** box accepts individual YouTube and SoundCloud links. Songs are filed under their actual source category; osu!mania retains its own category. SoundCloud uses the same instrument/chart generator, with optional track artwork and no YouTube video request. Regeneration and PNG source cards support both providers. Spotify, Bandcamp, Audius and local audio import are not included. Restricted/unavailable tracks can still fail through the provider/downloader.
