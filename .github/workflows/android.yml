@@ -1,0 +1,75 @@
+name: Android build
+on:
+  push:
+    branches: [android]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: android-release
+  cancel-in-progress: true
+jobs:
+  android:
+    if: github.ref == 'refs/heads/android'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Godot and Android templates
+        run: |
+          sdkmanager 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0'
+          curl --fail --retry 3 -L -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          sudo install /tmp/godot/Godot_v4.4.1-stable_linux.x86_64 /usr/local/bin/godot
+          curl --fail --retry 3 -L -o /tmp/templates.zip https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          unzip -q /tmp/templates.zip 'templates/android_debug.apk' -d /tmp
+          mv /tmp/templates/android_debug.apk "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
+          mkdir -p "$HOME/.config/godot" "$HOME/.android" dist
+          keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
+          cat > "$HOME/.config/godot/editor_settings-4.4.tres" <<CONFIG
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$HOME/.android/debug.keystore"
+          CONFIG
+      - name: Validate scripts and touch gameplay
+        run: |
+          python -m unittest discover -s mobile/tests -v
+          godot --headless --editor --path . --import 2>&1 | tee /tmp/import.log
+          if grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' /tmp/import.log; then exit 1; fi
+          godot --headless --path . --script res://mobile/smoke.gd 2>&1 | tee /tmp/smoke.log
+          if grep -E 'SCRIPT ERROR|ERROR:|FAIL:' /tmp/smoke.log; then exit 1; fi
+      - name: Export APK and content update
+        run: |
+          python -c "from pathlib import Path; Path('mobile/VERSION').write_text('${{ github.sha }}')"
+          godot --headless --path . --export-debug Android dist/PulseFour-Android.apk 2>&1 | tee /tmp/export.log
+          test -s dist/PulseFour-Android.apk
+          if grep -E 'Export failed|SCRIPT ERROR|ERROR:' /tmp/export.log; then exit 1; fi
+          godot --headless --path . --export-pack Android dist/PulseFour-Android.pck
+          python mobile/package_update.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PulseFour-Android
+          path: dist/*
+          compression-level: 0
+      - name: Publish separate Android prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view android-channel >/dev/null 2>&1; then
+            gh release create android-channel --target android --prerelease --title 'Android early access' --notes-file mobile/RELEASE.md
+          fi
+          # Retain the original APK signing identity. Later builds update content in-app.
+          if ! gh release view android-channel --json assets --jq '.assets[].name' | grep -qx PulseFour-Android.apk; then
+            gh release upload android-channel dist/PulseFour-Android.apk
+          fi
+          gh release upload android-channel dist/PulseFour-Android.pck --clobber
+          gh release upload android-channel dist/android-update.json --clobber
+          gh release edit android-channel --prerelease --notes-file mobile/RELEASE.md
