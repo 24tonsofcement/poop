@@ -65,30 +65,44 @@ def run(request_json, bridge):
             Path(request['destination']).write_bytes(data)
             return json.dumps({'message':'Card ready','paths':[],'warnings':[]})
         elif kind in ('link','regenerate'):
-            if request.get('ai'):
-                from ai_charting import refine
-                original=worker.instrument_charts
-                original_hype=worker.song_hype
-                original_commit=worker.commit_pack
-                approved_hype=None
-                def assisted(audio,temp,job):
-                    nonlocal approved_hype
+            original=worker.instrument_charts
+            original_hype=worker.song_hype
+            original_timing=worker.estimate_timing
+            original_commit=worker.commit_pack
+            analysis=None
+            approved_hype=None
+            def combined(audio,temp,job):
+                nonlocal analysis,approved_hype
+                endpoint=bridge.get_cloud_url()
+                if endpoint:
+                    from cloud_client import analyze_remote
+                    analysis=analyze_remote(audio,endpoint,bridge.getCloudToken(),job,bridge)
+                    charts=analysis['charts']
+                else:
                     charts=original(audio,temp,job)
-                    job.update('Claude: reviewing measured musical phrases and chart flow…',88)
-                    edited,approved_hype=refine(charts,audio,temp/'stems'/worker.MODEL/audio.stem,bridge,job)
-                    return edited
-                worker.instrument_charts=assisted
-                worker.song_hype=lambda *args,**kwargs: approved_hype
-                def ai_commit(work,library,pack):
-                    pack['generator'] += ' + Claude evidence-constrained editor ('+bridge.get_model()+')'
-                    return original_commit(work,library,pack)
-                worker.commit_pack=ai_commit
-                try: paths,warnings=(worker.import_youtube if kind=='link' else worker.regenerate_song)(request['source'],library,temp,job)
-                finally:
-                    worker.instrument_charts=original
-                    worker.song_hype=original_hype
-                    worker.commit_pack=original_commit
-            else: paths,warnings=(worker.import_youtube if kind=='link' else worker.regenerate_song)(request['source'],library,temp,job)
+                    job.update('Generating Mixed charts from the complete song…',84)
+                    charts={'Mixed':worker.generate_charts(audio,allow_holds=True,instrument='mixed'),**charts}
+                if request.get('ai'):
+                    from ai_charting import refine
+                    charts,approved_hype=refine(charts,audio,temp/'stems'/worker.MODEL/audio.stem,bridge,job,
+                        measured=analysis['evidence'] if analysis else None,
+                        candidate_hype=analysis['hype'] if analysis else None,
+                        cache_dir=library/'.ai-plan-cache')
+                return charts
+            worker.instrument_charts=combined
+            worker.song_hype=lambda *args,**kwargs: approved_hype if approved_hype is not None else analysis['hype'] if analysis else original_hype(*args,**kwargs)
+            worker.estimate_timing=lambda audio: analysis['timing'] if analysis else original_timing(audio)
+            def record_generator(work,library,pack):
+                pack['generator']+=' + full-song Mixed v1'+(' + cloud analysis' if analysis else '')
+                if request.get('ai'):pack['generator']+=' + Claude evidence-constrained editor ('+bridge.get_model()+')'
+                return original_commit(work,library,pack)
+            worker.commit_pack=record_generator
+            try: paths,warnings=(worker.import_youtube if kind=='link' else worker.regenerate_song)(request['source'],library,temp,job)
+            finally:
+                worker.instrument_charts=original
+                worker.song_hype=original_hype
+                worker.estimate_timing=original_timing
+                worker.commit_pack=original_commit
         else: raise ValueError('Unsupported phone import')
     return json.dumps({'message':'Import complete','paths':paths,'warnings':warnings})
 

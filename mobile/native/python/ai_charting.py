@@ -1,6 +1,7 @@
 """Evidence-constrained Claude chart editor. No raw audio, credentials, or invented timestamps in prompts."""
 import copy
 import json
+import hashlib
 from pathlib import Path
 import numpy as np
 from charting import read_wav
@@ -36,13 +37,22 @@ def evidence(charts,audio,stems):
     for instrument,diffs in charts.items():
         stem=next((name for name,label in LABELS.items() if label==instrument),'other')
         path=Path(stems)/(stem+'.wav')
+        if instrument=='Mixed':path=Path(audio)
         samples,rate=read_wav(path if path.exists() else audio)
         hop=max(1,round(rate*.02));n=len(samples)//hop
         power=np.sqrt(np.mean(samples[:n*hop].reshape(n,hop)**2,axis=1))
         attacks=np.maximum(np.diff(power,prepend=0),0)
         sections=[];templates=[]
         maximum=max(float(np.percentile(power,95)),1e-8)
-        for index,start in enumerate(np.arange(0,len(samples)/rate,span)):
+        windows=[];cursor=0.;duration=len(samples)/rate
+        while cursor<duration-.02:
+            pulse=next(p['beat_length'] for p in reversed(timing) if p['t']<=cursor)
+            finish=min(duration,cursor+max(2.4,min(8.,pulse*8)))
+            change=next((p['t'] for p in timing if p['t']>cursor+.02),duration)
+            finish=min(finish,change)
+            windows.append((cursor,finish-cursor));cursor=finish
+        attack_threshold=max(float(np.percentile(attacks,85)),.001)
+        for index,(start,span) in enumerate(windows):
             a=int(start/.02);b=min(n,int((start+span)/.02));part=attacks[a:b]
             if not len(part):continue
             contour=np.array([float(v.mean()) if len(v) else 0 for v in np.array_split(part,32)])
@@ -69,6 +79,11 @@ def evidence(charts,audio,stems):
             if family_id not in families:families.append(family_id)
             sections.append({'id':index,'family':family_id,'start':round(float(start),4),'end':round(min(float(start+span),len(samples)/rate),4),
                 'energy':round(float(np.mean(power[a:b]))/maximum,3),
+                'bpm':round(60/next(p['beat_length'] for p in reversed(timing) if p['t']<=start),1),
+                'tempo_changes':[{'t':p['t'],'bpm':round(60/p['beat_length'],1)} for p in timing if start<=p['t']<start+span],
+                'energy_change':round(float(np.mean(power[a:b])-np.mean(power[max(0,a-(b-a)):a]))/maximum,3) if a else 0,
+                'silence_fraction':round(float(np.mean(power[a:b]<maximum*.04)),2),
+                'attack_rate':round(float(np.sum(part>attack_threshold))/max(.02,(b-a)*.02),2),
                 'attack_contour':np.round(unit,3).tolist(),
                 'pitch_class_contour':np.argmax(chroma.reshape(16,12),axis=1).tolist(),
                 'difficulty_notes':{d:int(sum(start<=v['t']<start+span for v in notes)) for d,notes in diffs.items()},
@@ -111,7 +126,7 @@ def apply_plan(charts,measured,plan):
                 ordered=sorted(rows)
                 # Keep the strongest measured attacks, with beat alignment only as a tie-breaker.
                 # No hash, random sample, or invented time controls musical density.
-                ranked=sorted(ordered,key=lambda at:(-float(strengths.get(str(at),1)),abs(((at-section['start'])/(measured.get('phrase_seconds',4)/8)+.5)%1-.5),at))
+                ranked=sorted(ordered,key=lambda at:(-float(strengths.get(str(at),1)),abs(((at-section['start'])/((section['end']-section['start'])/8)+.5)%1-.5),at))
                 retain=set(ranked[:max(1,round(len(rows)*fraction))])
                 if ordered: retain.update((ordered[0],ordered[-1]))
                 for index,(at,row) in enumerate(sorted(rows.items())):
@@ -132,35 +147,60 @@ def apply_plan(charts,measured,plan):
     return out
 
 
-def refine(charts,audio,stems,bridge,job):
+def refine(charts,audio,stems,bridge,job,measured=None,candidate_hype=None,cache_dir=None):
     model=bridge.get_model()
     if not model:raise ValueError('Choose an available Claude model in Settings > AI first')
     available=json.loads(bridge.api('/v1/models','')).get('data',[])
     if model not in {item.get('id') for item in available}:raise ValueError('Selected Claude model is not available to this API key. Refresh Models in Settings.')
-    measured=evidence(charts,audio,stems)
+    measured=measured if measured is not None else evidence(charts,audio,stems)
     from hype import detect_hype
-    candidate_hype=detect_hype(audio,{LABELS[p.stem]:p for p in Path(stems).glob('*.wav') if p.stem in LABELS},charts=charts)
+    candidate_hype=candidate_hype if candidate_hype is not None else detect_hype(audio,{LABELS[p.stem]:p for p in Path(stems).glob('*.wav') if p.stem in LABELS},charts=charts)
     candidates={}
     for scope,sections in [('global',candidate_hype.get('global',[])),*candidate_hype.get('instruments',{}).items()]:
         for index,section in enumerate(sections):candidates[f'{scope}:{index}']={'scope':scope,**section}
     measured['hype_candidates']=candidates
     # One whole-song request: the model sees recurring families together, avoiding independent random chunks.
-    prompt={'task':'Plan coherent four-lane rhythm charts across six difficulties. Analyze every measured instrument and repeated family. Pick a consistent motif per family, progressively increasing density. Use corpus evidence as guidance, not quotas. Preserve rhythmic identity. You have audio measurements, not a listening session: do not invent musical claims.',
+    prompt={'task':'Plan coherent four-lane rhythm charts across six difficulties. Analyze every measured instrument and repeated family. Pick a consistent motif per family, progressively increasing density. Use corpus evidence as guidance, not quotas. Mixed follows the complete arrangement: balance rhythm, bass, melody and vocals rather than locking to one stem. Preserve rhythmic identity. Respect local BPM changes, slowdowns, accelerations, energy changes, rests, attack rates, repeated melodies and supported sustains; do not confuse quieter passages with slower tempo. You have audio measurements, not a listening session: do not invent musical claims.',
         'measurements':measured,'allowed_patterns':PATTERNS,
         'response_format':{'motifs':[{'family':'exact family id','pattern':'one allowed pattern','density':[.65,.75,.85,.9,.95,1.0],'hold_length':1}], 'hype_keep':['exact candidate id']},
         'rules':['Include every family exactly once','Density must be nondecreasing and each value 0.55..1.0','hold_length is 0.5 or 1; never extend unsupported holds','hype_keep may only contain supplied candidate IDs; keep strong lifts/drops or clear instrument solos, reject ambiguous candidates. An empty list is allowed.', 'Return JSON only']}
+    # Review repeated families once, with bounded context and total request count.
     families=measured['families']
     plan={'motifs':[], 'hype_keep':[]}
-    batches=[families[i:i+48] for i in range(0,len(families),48)]
-    overview={instrument:[{k:v for k,v in section.items() if k not in ('attack_contour','onset_strength')} for section in sections] for instrument,sections in measured['instruments'].items()}
-    for index,batch in enumerate(batches):
+    batches=[families[i:i+24] for i in range(0,len(families),24)]
+    if len(batches)>4:
+        job.update('Complex song exceeds AI budget; keeping the measured charts without API charges.',92)
+        return charts,candidate_hype
+    overview={instrument:[{k:section[k] for k in ('family','start','end','energy','bpm','energy_change','silence_fraction')} for section in sections] for instrument,sections in measured['instruments'].items()}
+    requests=[]
+    for batch in batches:
+        current={'task':prompt['task'],'allowed_patterns':PATTERNS,'response_format':prompt['response_format'],
+            'rules':prompt['rules']+['Return only supplied families. Choose a whole-song hype_keep list.'],
+            'reference':{k:v for k,v in REFERENCE.items() if k!='measured_corpus'},
+            'whole_song_structure':overview,'hype_candidates':candidates,'families':{}}
+        for instrument,sections in measured['instruments'].items():
+            for family in batch:
+                matches=[section for section in sections if section['family']==family]
+                if matches:
+                    current['families'][family]={k:v for k,v in matches[0].items() if k not in ('onset_strength','id','family')}
+        requests.append(json.dumps(current,separators=(',',':')))
+    # Character budget is conservative, not a promise of exact tokenizer counts.
+    if sum(len(v) for v in requests)>48000:
+        job.update('Song exceeds AI feature budget; keeping measured charts without API charges.',92)
+        return charts,candidate_hype
+    cache_key=hashlib.sha256((model+'\n'+json.dumps(measured,sort_keys=True)+json.dumps(charts,sort_keys=True)+'mixed-plan-v1').encode()).hexdigest()
+    cache=Path(cache_dir)/(cache_key+'.json') if cache_dir else None
+    if cache and cache.is_file():
+        try:
+            cached=json.loads(cache.read_text());validate_plan(cached,measured)
+            if not isinstance(cached.get('hype_keep'),list) or any(k not in candidates for k in cached['hype_keep']):raise ValueError('Invalid cache')
+            plan=cached;requests=[]
+            job.update('Reusing saved AI phrase plan — no generation tokens needed.',90)
+        except (ValueError,OSError):pass
+    for index,(batch,content) in enumerate(zip(batches,requests)):
         job.update(f'Claude: reviewing phrase group {index+1}/{len(batches)}…',88+3*index/max(1,len(batches)))
-        current=copy.deepcopy(prompt)
-        current['whole_song_structure']=overview
-        current['measurements']['families']=batch
-        current['measurements']['instruments']={part:[{k:v for k,v in section.items() if k!='onset_strength'} for section in sections if section['family'] in batch] for part,sections in measured['instruments'].items()}
-        current['rules'].append('Return motifs only for the supplied families in this batch; use whole_song_structure for context. Give a whole-song hype_keep decision.')
-        body={'model':model,'max_tokens':8000,'messages':[{'role':'user','content':json.dumps(current,separators=(',',':'))}]}
+        body={'model':model,'max_tokens':min(4000,300+140*len(batch)),
+            'messages':[{'role':'user','content':content}]}
         response=json.loads(bridge.api('/v1/messages',json.dumps(body)))
         if response.get('stop_reason')=='max_tokens':raise ValueError('AI analysis was truncated. Retry without AI; no incomplete chart was saved.')
         raw=''.join(item.get('text','') for item in response.get('content',[]) if item.get('type')=='text').strip()
@@ -188,5 +228,9 @@ def refine(charts,audio,stems,bridge,job):
     samples,sample_rate=read_wav(audio)
     duration=len(samples)/sample_rate
     validate({'schema':1,'category':'YouTube','source':'https://www.youtube.com/watch?v=dQw4w9WgXcQ','duration':duration,'charts':result})
+    if cache:
+        cache.parent.mkdir(parents=True,exist_ok=True)
+        cache.write_text(json.dumps(plan))
+        for stale in sorted(cache.parent.glob('*.json'),key=lambda p:p.stat().st_mtime,reverse=True)[20:]:stale.unlink()
     job.update('AI phrase plan validated; measuring hype against the edited charts…',92)
     return result,approved

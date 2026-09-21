@@ -73,6 +73,38 @@ class PulseNative(godot: Godot): GodotPlugin(godot) {
     @UsedByGodot fun has_key() = prefs.contains("credential")
     @UsedByGodot fun get_model() = prefs.getString("model","") ?: ""
     @UsedByGodot fun set_model(value:String) { prefs.edit().putString("model",value.trim()).apply() }
+    @UsedByGodot fun get_cloud_url() = prefs.getString("cloud_url","") ?: ""
+    @UsedByGodot fun clear_cloud() { prefs.edit().remove("cloud_url").remove("cloud_token").remove("cloud_iv").apply();progress("On-device processing selected",0.0) }
+    @UsedByGodot fun configure_cloud() {
+        activity?.runOnUiThread {
+            val layout=android.widget.LinearLayout(activity);layout.orientation=1
+            val address=EditText(activity);address.hint="https://your-analysis-server";address.setText(get_cloud_url())
+            val token=EditText(activity);token.inputType=129;token.hint="Cloud worker access token (not Claude key)"
+            layout.addView(address);layout.addView(token)
+            AlertDialog.Builder(activity).setTitle("Cloud song analysis")
+                .setMessage("Uploads song audio to your configured server for separation and chart analysis. Claude receives compact features only. Blank token keeps your saved token. Hosting is required separately.")
+                .setView(layout).setNegativeButton("Cancel",null).setPositiveButton("Save") {_,_->
+                    try {
+                        val url=URL(address.text.toString().trim().trimEnd('/'))
+                        require(url.protocol=="https" && url.userInfo==null && url.query==null && url.ref==null){"Use an HTTPS server address"}
+                        val value=token.text.toString().trim()
+                        require(value.length>=32 || (get_cloud_url()==url.toString() && prefs.contains("cloud_token"))){"Enter the server's access token (32+ characters)"}
+                        val edit=prefs.edit().putString("cloud_url",url.toString())
+                        if(value.isNotEmpty()) {
+                            val cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key("pulse-cloud"))
+                            edit.putString("cloud_iv",Base64.encodeToString(cipher.iv,Base64.NO_WRAP))
+                                .putString("cloud_token",Base64.encodeToString(cipher.doFinal(value.toByteArray()),Base64.NO_WRAP))
+                        }
+                        edit.apply();progress("Cloud analysis configured",0.0)
+                    }catch(e:Exception){fail(e)}finally{token.text.clear()}
+                }.show()
+        }
+    }
+    fun getCloudToken():String {
+        val cipher=Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE,key("pulse-cloud"),GCMParameterSpec(128,Base64.decode(prefs.getString("cloud_iv","")!!,Base64.NO_WRAP)))
+        return String(cipher.doFinal(Base64.decode(prefs.getString("cloud_token","")!!,Base64.NO_WRAP)))
+    }
     @UsedByGodot fun cancel() { cancelled.set(true); process?.destroy(); YoutubeDL.destroyProcessById("pulse-import") }
     @UsedByGodot fun clear_key() {prefs.edit().remove("credential").remove("iv").apply()}
     @UsedByGodot fun enter_key() {

@@ -224,9 +224,12 @@ func show_settings() -> void:
 	for key in visual_effects.keys(): add_effect_toggle(visual, str(key).capitalize(), str(key))
 	var hype = settings_page(tabs, "Hype", "HYPE", "Song-synced bonus moments.")
 	for key in ["bonus", "sensitivity", "glow", "rings", "shake"]: add_hype_slider(hype, key.capitalize(), key)
-	var connection = settings_page(tabs, "Songs & AI", "ON-DEVICE IMPORTER", "Six-stem audio analysis runs on this phone. AI is optional and needs internet/API credit.")
+	var connection = settings_page(tabs, "Songs & AI", "SONG PROCESSING", "Mixed charts follow the whole song. Use this phone or your cloud worker; Claude is optional.")
 	button_into(connection, "Manage / import songs", show_mobile_library)
 	if native_importer != null:
+		button_into(connection, "Configure cloud processing", func(): native_importer.configure_cloud())
+		button_into(connection, "Use on-device processing", func(): native_importer.clear_cloud())
+		label_into(connection, "Processing: " + ("This phone" if native_importer.get_cloud_url().is_empty() else "Cloud worker"), 16)
 		button_into(connection, "Update media downloader", func(): native_importer.update_downloader())
 		button_into(connection, "Enter private Claude API key", func(): native_importer.enter_key())
 		button_into(connection, "Remove API key", func(): native_importer.clear_key())
@@ -267,7 +270,7 @@ func show_mobile_library() -> void:
 		config.set_value("generation", "ai_enabled", value)
 		config.save("user://mobile.cfg"))
 	root.add_child(ai)
-	button_into(root, "Generate on this device", func():
+	button_into(root, "Generate song charts", func():
 		if native_importer != null: native_importer.generate(link.text, song_root, ai_enabled)
 		else: message_phone("Install the standalone APK to use this feature."))
 	button_into(root, "Regenerate selected chart", func():

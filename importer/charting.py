@@ -72,7 +72,7 @@ def generate_charts(path: Path, allow_holds: bool = True, instrument: str = "mel
         voice_bins[ids] = peaks
         voice_weights[ids] = harmonic
         pitches[ids] = np.argmax(spec, axis=1)
-    if instrument.lower() != 'drums':
+    if instrument.lower() not in ('drums','mixed'):
         pitches = consistent_voice(voice_bins, voice_weights, energies, frequencies, pitches)
     # Remove slowly changing timbre/noise while retaining distinct attacks.
     envelope = np.maximum(envelope - median_filter(envelope, size=31) * 0.65, 0)
@@ -92,11 +92,11 @@ def generate_charts(path: Path, allow_holds: bool = True, instrument: str = "mel
         pre_pitch = float(np.median(pitches[max(0, i - 5):max(1, i - 1)]))
         post_pitch = float(np.median(pitches[i:min(frame_count, i + 6)]))
         melodic_change = abs(post_pitch - pre_pitch) > max(2, pre_pitch * .12)
-        return rise or (instrument.lower() != 'drums' and melodic_change)
+        return rise or (instrument.lower() == 'mixed' and any(bands[i,b] > max(.001, float(np.mean(bands[max(0,i-5):max(1,i-1),b])) * 1.35) for b in range(4))) or (instrument.lower() not in ('drums','mixed') and melodic_change)
     candidates = [i for i in candidates if fresh_attack(i)]
     lanes = {}
     if candidates:
-        if instrument.lower() == 'drums':
+        if instrument.lower() in ('drums','mixed'):
             scale = np.maximum(np.percentile(bands[candidates], 90, axis=0), .001)
             for i in candidates:
                 lanes[i] = int(np.argmax(bands[i] / scale))

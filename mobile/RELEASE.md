@@ -1,21 +1,5 @@
-Android 0.2.1 repair: isolated downloader Python, taller mobile highway, and upgrade preservation tests. Install this APK over the existing standalone app; do not uninstall it. Same signing identity and package preserve settings, API key, songs and scores.
+Android 0.2.2: Mixed charts follow the full song, with all six difficulties and PNG card support. AI phrase review now includes local tempo changes, energy lifts/dips, rests, attack rates and recurring patterns, with bounded requests and cached plans to limit token use.
 
-Standalone Android edition — separate from PC and the old companion-only app.
+Cloud-worker integration is included but hosting is not configured: local generation remains the default. Configure your own HTTPS worker in Settings > Songs & AI to move six-stem separation, charting and audio analysis off the phone. Deployment instructions are in mobile/cloud/README.md. Your Claude key stays on your phone; only measured summaries are sent to Claude.
 
-Download **PulseFour-Android.apk**. Android 8.0+, ARM64 or x86-64.
-
-- On-device six-stem song separation and all six chart difficulties.
-- YouTube/SoundCloud imports with no computer companion.
-- Optional Claude-assisted phrase arrangements and evidence-checked hype sections.
-- Private on-device API-key entry and available-model selection.
-- PNG song-card import/export with original chart preservation and media retrieval.
-- Touch chords/holds, carousel, preview, scoring, grades, effects and saved records.
-- Automatic game-content updates through this separate Android channel.
-
-The bundled model makes this a larger download. Song analysis is CPU intensive;
-processing time and thermal performance vary by phone. Claude requires internet
-and API credit. Offline and emulator checks do not certify human-level chart
-quality or replace physical-device playtesting. Native APK updates need Android's
-installation confirmation; regular content updates do not need reinstallation.
-
-The signing key is retained privately and is not part of GitHub or the APK.
+Install this APK over the existing Android app; do not uninstall. The signing identity and package stay the same to retain settings, API key, songs and scores. The PC version is unchanged. Existing songs need Regenerate to add Mixed charts.
