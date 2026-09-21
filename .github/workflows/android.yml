@@ -69,6 +69,8 @@ jobs:
           godot --headless --path . --export-pack Android dist/PulseFour-Android.pck
           python mobile/package_update.py
           cp "$ANDROID_HOME/build-tools/34.0.0/lib/apksigner.jar" dist/apksigner.jar
+      - name: Stop build daemons before native device validation
+        run: cd android/build && ./gradlew --stop
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -82,7 +84,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          emulator-options: -no-window -gpu swangle -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-window -memory 4096 -gpu swangle -no-snapshot -noaudio -no-boot-anim
           script: bash mobile/emulator-smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()

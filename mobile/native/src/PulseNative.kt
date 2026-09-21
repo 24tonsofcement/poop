@@ -202,19 +202,29 @@ class PulseNative(godot: Godot): GodotPlugin(godot) {
         if(requestCode==6101&&resultCode==Activity.RESULT_OK&&data!=null){
             val uris=mutableListOf<Uri>();data.clipData?.let{for(i in 0 until it.itemCount)uris.add(it.getItemAt(i).uri)}?:data.data?.let{uris.add(it)}
             if(uris.isNotEmpty())prefs.edit().putString("last_import",uris.first().toString()).apply()
-            executor.execute { importNext(uris.take(100),0) }
+            if(uris.size>100){fail(IllegalArgumentException("Select up to 100 cards at a time"));return}
+            if(busy.get()){progress("An import is already running",0.0);return}
+            cancelled.set(false)
+            executor.execute { importNext(uris,0,mutableListOf()) }
         }
     }
-    private fun importNext(uris:List<Uri>,index:Int) {
-        if(index>=uris.size)return
+    private fun importNext(uris:List<Uri>,index:Int,failures:MutableList<String>) {
+        if(index>=uris.size||cancelled.get()) {
+            status=JSONObject().put("state","done").put("message","Imported ${index-failures.size}/${uris.size} cards"+(if(cancelled.get())"; cancelled" else "")+(if(failures.isNotEmpty())". "+failures.joinToString("; ").take(800) else "")).toString()
+            return
+        }
         val file=File(context.cacheDir,"import-card-$index.png")
         try {
             context.contentResolver.openInputStream(uris[index])!!.use{input->file.outputStream().use{out->
                 val buffer=ByteArray(65536);var total=0
                 while(true){val n=input.read(buffer);if(n<0)break;total+=n;require(total<=32*1024*1024){"Card exceeds 32 MB"};out.write(buffer,0,n)}
             }}
-            submit(JSONObject().put("kind","card_import").put("source",file.path).put("library",library)) {ok->file.delete();if(ok&&!cancelled.get())importNext(uris,index+1)}
-        }catch(e:Exception){file.delete();fail(e)}
+            submit(JSONObject().put("kind","card_import").put("source",file.path).put("library",library)) {ok->
+                file.delete()
+                if(!ok)failures.add("Card ${index+1}: "+JSONObject(status).optString("message","Failed"))
+                importNext(uris,index+1,failures)
+            }
+        }catch(e:Exception){file.delete();failures.add("Card ${index+1}: "+(e.message?:"Cannot read card"));importNext(uris,index+1,failures)}
     }
 }
 

@@ -112,6 +112,9 @@ def self_test(bridge):
         pcm=np.repeat((signal*32767).astype('<i2')[:,None],2,axis=1)
         with wave.open(str(audio),'wb') as wav:
             wav.setnchannels(2);wav.setsampwidth(2);wav.setframerate(rate);wav.writeframes(pcm.tobytes())
+        video=folder/'probe.ogv'
+        bridge.command(json.dumps([bridge.binary('ffmpeg'),'-nostdin','-y','-f','lavfi','-i','color=c=blue:s=64x64:d=0.3','-an','-c:v','libtheora',str(video)]))
+        assert video.stat().st_size>100
         target=folder/'stems'
         bridge.command(json.dumps([bridge.binary('demucs'),bridge.modelPath(),str(audio),str(target),'--verify']))
         for source in worker.SOURCES:

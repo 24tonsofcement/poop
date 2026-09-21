@@ -22,3 +22,5 @@ echo '09704f4ceae204e56e77d5eefd6ac71d7275be81fd507e6913371d59abcee856  android/
 test "$(stat -c%s android/build/native-assets/htdemucs-6s-f16.bin)" -gt 40000000
 mkdir -p android/build/native-assets/licenses
 cp "$source_dir/LICENSE" android/build/native-assets/licenses/demucs-cpp.txt
+
+cp mobile/native/demucs-model-LICENSE.txt android/build/native-assets/licenses/demucs-model.txt
