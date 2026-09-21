@@ -4,12 +4,23 @@ var fingers: Dictionary = {}
 var companion_url: String = ""
 var companion_token: String = ""
 var phone_status: Label
+var native_importer: Object
+var native_last_status: String = ""
+var ai_enabled: bool = false
+var model_list: VBoxContainer
 
 func _ready() -> void:
 	var config = ConfigFile.new()
 	if config.load("user://mobile.cfg") == OK:
 		companion_url = str(config.get_value("companion", "url", ""))
 		companion_token = str(config.get_value("companion", "token", ""))
+	if Engine.has_singleton("PulseNative"):
+		native_importer = Engine.get_singleton("PulseNative")
+	var native_timer = Timer.new()
+	native_timer.wait_time = 0.5
+	native_timer.timeout.connect(poll_native_import)
+	add_child(native_timer)
+	native_timer.start()
 	super._ready()
 	players_count = 1
 	offline_players = 1
@@ -201,24 +212,16 @@ func show_settings() -> void:
 	for key in visual_effects.keys(): add_effect_toggle(visual, str(key).capitalize(), str(key))
 	var hype = settings_page(tabs, "Hype", "HYPE", "Song-synced bonus moments.")
 	for key in ["bonus", "sensitivity", "glow", "rings", "shake"]: add_hype_slider(hype, key.capitalize(), key)
-	var connection = settings_page(tabs, "Songs", "COMPANION", "Generate songs on a computer; download and play them offline here.")
-	var address = LineEdit.new()
-	address.placeholder_text = "http://192.168.1.20:27441"
-	address.text = companion_url
-	connection.add_child(address)
-	var token = LineEdit.new()
-	token.placeholder_text = "Companion access token"
-	token.secret = true
-	token.text = companion_token
-	connection.add_child(token)
-	button_into(connection, "Save connection", func():
-		companion_url = address.text.strip_edges().trim_suffix("/")
-		companion_token = token.text.strip_edges()
-		var config = ConfigFile.new()
-		config.set_value("companion", "url", companion_url)
-		config.set_value("companion", "token", companion_token)
-		config.save("user://mobile.cfg"))
-	button_into(connection, "Manage / download songs", show_mobile_library)
+	var connection = settings_page(tabs, "Songs & AI", "ON-DEVICE IMPORTER", "Six-stem audio analysis runs on this phone. AI is optional and needs internet/API credit.")
+	button_into(connection, "Manage / import songs", show_mobile_library)
+	if native_importer != null:
+		button_into(connection, "Enter private Claude API key", func(): native_importer.enter_key())
+		button_into(connection, "Remove API key", func(): native_importer.clear_key())
+		button_into(connection, "Refresh available Claude models", func(): native_importer.list_models())
+		label_into(connection, "Selected model: " + str(native_importer.get_model()), 16)
+		model_list = box_into(connection)
+	else:
+		label_into(connection, "Install the standalone APK to enable phone generation.", 17)
 
 func mobile_slider(parent: Node, title: String, property: String, minimum: float, maximum: float) -> void:
 	var caption = label_into(parent, title + ": " + str(get(property)))
@@ -234,13 +237,28 @@ func mobile_slider(parent: Node, title: String, property: String, minimum: float
 func show_mobile_library() -> void:
 	screen = "library"
 	var root = mobile_page("SONGS / DOWNLOADS")
-	phone_status = label_into(root, "Installed songs work offline. Connect a companion to add more.", 17)
+	phone_status = label_into(root, "Full generation runs on this device. Long songs may take several minutes; you can cancel below.", 17)
 	phone_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var link = LineEdit.new()
 	link.placeholder_text = "YouTube or SoundCloud URL"
 	root.add_child(link)
-	button_into(root, "Generate song on companion", func(): request_generation(link.text))
-	button_into(root, "Browse companion songs", func(): browse_companion(root))
+	var ai = CheckBox.new()
+	ai.text = "Claude-assisted charts (uses API credit)"
+	ai.button_pressed = ai_enabled
+	ai.toggled.connect(func(value): ai_enabled = value)
+	root.add_child(ai)
+	button_into(root, "Generate on this device", func():
+		if native_importer != null: native_importer.generate(link.text, song_root, ai_enabled)
+		else: message_phone("Install the standalone APK to use this feature."))
+	var cards = box_into(root, true)
+	button_into(cards, "Import song cards", func():
+		if native_importer != null: native_importer.import_cards(song_root))
+	button_into(cards, "Export selected card", func():
+		if native_importer != null and not selected.is_empty() and str(selected.get("category", "")) in ["YouTube", "SoundCloud"]:
+			native_importer.export_card(str(selected.folder), str(selected.title), song_root)
+		else: message_phone("Select an imported YouTube or SoundCloud song first."))
+	button_into(cards, "Cancel import", func():
+		if native_importer != null: native_importer.cancel())
 	label_into(root, "ON THIS DEVICE", 22)
 	for song in songs:
 		var row = box_into(root, true)
@@ -437,3 +455,22 @@ func apply_window_mode() -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	else:
 		super.apply_window_mode()
+
+func poll_native_import() -> void:
+	if native_importer == null: return
+	var raw: String = str(native_importer.get_status())
+	if raw == native_last_status: return
+	native_last_status = raw
+	var status = JSON.parse_string(raw)
+	if not status is Dictionary: return
+	message_phone(str(status.get("message", "")))
+	if status.get("state") == "done":
+		scan_songs()
+		if not status.get("warnings", []).is_empty(): message_phone(last_message + " · " + str(status.warnings))
+	if status.get("state") == "models" and is_instance_valid(model_list):
+		for child in model_list.get_children(): child.queue_free()
+		for entry in status.get("models", []):
+			var model_id: String = str(entry.get("id", ""))
+			button_into(model_list, str(entry.get("display_name", model_id)), func():
+				native_importer.set_model(model_id)
+				show_settings())

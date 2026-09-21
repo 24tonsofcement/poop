@@ -6,9 +6,17 @@ capture() {
   grep -E 'FATAL|fatal|SIGSEGV|SIGABRT|SCRIPT ERROR|ERROR:|Godot|godot' dist/android-logcat.txt | tail -100 || true
 }
 trap capture EXIT
-package=org.pulsefour.mobile
+package=org.pulsefour.standalone
 adb install --no-incremental -r dist/PulseFour-Android.apk
 adb logcat -c
+adb shell am start -n "$package/com.godot.game.GodotApp" --ez pulse_native_test true
+for attempt in $(seq 1 30); do
+  if adb shell run-as "$package" test -f files/native-test-result; then break; fi
+  sleep 2
+done
+adb shell run-as "$package" cat files/native-test-result | tee dist/native-test-result.txt
+grep -q '^PASS:' dist/native-test-result.txt
+adb shell am force-stop "$package"
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
 sleep 18
 adb shell pidof "$package"

@@ -12,7 +12,7 @@ jobs:
   android:
     if: github.ref == 'refs/heads/android'
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -25,14 +25,17 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install Godot and Android templates
         run: |
-          sdkmanager 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0'
+          sdkmanager 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0' 'ndk;27.2.12479018'
           curl --fail --retry 3 -L -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
           unzip -q /tmp/godot.zip -d /tmp/godot
           sudo install /tmp/godot/Godot_v4.4.1-stable_linux.x86_64 /usr/local/bin/godot
           curl --fail --retry 3 -L -o /tmp/templates.zip https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz
           mkdir -p "$HOME/.local/share/godot/export_templates/4.4.1.stable"
-          unzip -q /tmp/templates.zip 'templates/android_debug.apk' -d /tmp
+          unzip -q /tmp/templates.zip 'templates/android_debug.apk' 'templates/android_source.zip' -d /tmp
           mv /tmp/templates/android_debug.apk "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
+          mkdir -p android/build
+          unzip -q /tmp/templates/android_source.zip -d android/build
+          python mobile/native/prepare.py
           mkdir -p "$HOME/.config/godot" "$HOME/.android" dist
           keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
           cat > "$HOME/.config/godot/editor_settings-4.4.tres" <<CONFIG
@@ -42,9 +45,14 @@ jobs:
           export/android/java_sdk_path = "$JAVA_HOME"
           export/android/debug_keystore = "$HOME/.android/debug.keystore"
           CONFIG
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build native separation and bundle model
+        run: bash mobile/native/build-demucs.sh
       - name: Validate scripts and touch gameplay
         run: |
-          python -m pip install numpy==1.26.4 Pillow==11.1.0
+          python -m pip install numpy==1.26.4 scipy==1.13.1 Pillow==11.1.0
           python scripts/make_demo.py --audio-only
           python -m unittest discover -s mobile/tests -v
           timeout 120 godot --headless --editor --path . --import 2>&1 | tee /tmp/import.log
@@ -80,17 +88,3 @@ jobs:
           name: PulseFour-Android
           path: dist/*
           compression-level: 0
-      - name: Publish separate Android prerelease
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if ! gh release view android-channel >/dev/null 2>&1; then
-            gh release create android-channel --target android --prerelease --title 'Android early access' --notes-file mobile/RELEASE.md
-          fi
-          # Retain the original APK signing identity. Later builds update content in-app.
-          if ! gh release view android-channel --json assets --jq '.assets[].name' | grep -qx PulseFour-Android.apk; then
-            gh release upload android-channel dist/PulseFour-Android.apk
-          fi
-          gh release upload android-channel dist/PulseFour-Android.pck --clobber
-          gh release upload android-channel dist/android-update.json --clobber
-          gh release edit android-channel --prerelease --notes-file mobile/RELEASE.md

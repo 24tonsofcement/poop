@@ -1,7 +1,7 @@
 extends Control
 # This scene intentionally has no game-script preloads: mount updates first.
-const RELEASE_API = "https://api.github.com/repos/24tonsofcement/poop/releases/tags/android-channel"
-const RUNTIME = "godot-4.4.1-android-1"
+const RELEASE_API = "https://api.github.com/repos/24tonsofcement/poop/releases/tags/android-standalone"
+const RUNTIME = "godot-4.4.1-android-2"
 var caption: Label
 var start_button: Button
 var started: bool = false

@@ -1,0 +1,129 @@
+"""Evidence-constrained Claude chart editor. No raw audio, credentials, or invented timestamps in prompts."""
+import copy
+import json
+from pathlib import Path
+import numpy as np
+from charting import read_wav
+from timing import estimate_timing
+from instruments import LABELS
+
+LEVELS=['Easy','Normal','Hard','Expert','Master','Insane']
+PATTERNS={'alternate':[0,2,1,3], 'roll':[0,1,2,3,2,1], 'inward':[0,3,1,2], 'trill':[0,2], 'outward':[1,2,0,3]}
+REFERENCE={
+ 'provenance':'Measured user-supplied native osu!mania 4K corpus; not a verified popularity ranking. Aggregate observations, not a trained model.',
+ 'charts':169,'sets':43,'note_heads':249557,
+ 'median_chord_row_fraction':.3218,'median_hold_head_fraction':.0934,
+ 'single_transition_cross_hand_fraction':.634,'single_transition_same_lane_fraction':.013,
+ 'principles':['Keep repeated musical phrases recognizable','Use measured onsets only','Emphasize stronger attacks; calm music should breathe',
+ 'Reserve triples and quads for strong accents','Short supported sustains add variety; long holds need sustained evidence',
+ 'At most two simultaneous holds; chords may have four lanes','Do not change the musical voice followed midway through a phrase']}
+
+
+def evidence(charts,audio,stems):
+    timing=estimate_timing(audio)
+    beat=float(timing[0]['beat_length'])
+    span=max(2.4,min(8.,beat*8))
+    result={};families=[]
+    for instrument,diffs in charts.items():
+        stem=next((name for name,label in LABELS.items() if label==instrument),'other')
+        path=Path(stems)/(stem+'.wav')
+        samples,rate=read_wav(path if path.exists() else audio)
+        hop=max(1,round(rate*.02));n=len(samples)//hop
+        power=np.sqrt(np.mean(samples[:n*hop].reshape(n,hop)**2,axis=1))
+        attacks=np.maximum(np.diff(power,prepend=0),0)
+        sections=[];templates=[]
+        maximum=max(float(np.percentile(power,95)),1e-8)
+        for index,start in enumerate(np.arange(0,len(samples)/rate,span)):
+            a=int(start/.02);b=min(n,int((start+span)/.02));part=attacks[a:b]
+            if not len(part):continue
+            contour=np.array([float(v.mean()) if len(v) else 0 for v in np.array_split(part,32)])
+            norm=float(np.linalg.norm(contour));unit=contour/max(norm,1e-10)
+            family=None
+            for tid,template in enumerate(templates):
+                if norm>1e-6 and float(np.dot(unit,template))>.94:family=tid;break
+            if family is None:family=len(templates);templates.append(unit)
+            family_id=f'{instrument}:{family}'
+            if family_id not in families:families.append(family_id)
+            sections.append({'id':index,'family':family_id,'start':round(float(start),4),'end':round(min(float(start+span),len(samples)/rate),4),
+                'energy':round(float(np.mean(power[a:b]))/maximum,3),
+                'attack_contour':np.round(unit,3).tolist(),
+                'difficulty_notes':{d:sum(start<=v['t']<start+span for v in notes) for d,notes in diffs.items()},
+                'supported_holds':sum(start<=v['t']<start+span and v['end']>v['t']+.08 for v in diffs.get('Expert',[]))})
+        result[instrument]=sections
+    return {'timing':timing,'phrase_seconds':span,'instruments':result,'families':families,'reference':REFERENCE}
+
+
+def validate_plan(plan,measured):
+    if not isinstance(plan,dict) or not isinstance(plan.get('motifs'),list):raise ValueError('Claude returned no valid chart plan')
+    allowed=set(measured['families']);result={}
+    for item in plan['motifs']:
+        if not isinstance(item,dict) or item.get('family') not in allowed or item.get('pattern') not in PATTERNS:raise ValueError('Claude used an unsupported motif')
+        density=item.get('density')
+        if not isinstance(density,list) or len(density)!=6 or any(type(v) not in (int,float) or not np.isfinite(v) or not .55<=v<=1 for v in density):raise ValueError('Invalid difficulty density')
+        if density!=sorted(density):raise ValueError('Difficulty densities must increase')
+        hold=item.get('hold_length',1)
+        if hold not in (.5,1):raise ValueError('AI may only preserve or shorten measured holds')
+        if item['family'] in result:raise ValueError('Duplicate motif plan')
+        result[item['family']]=item
+    if set(result)!=allowed:raise ValueError('Claude omitted musical phrases')
+    return result
+
+
+def apply_plan(charts,measured,plan):
+    plan=validate_plan(plan,measured);out=copy.deepcopy(charts)
+    for instrument,diffs in out.items():
+        sections=measured['instruments'][instrument]
+        for difficulty,notes in diffs.items():
+            level=LEVELS.index(difficulty) if difficulty in LEVELS else 3
+            changed=[];active={}
+            for section in sections:
+                policy=plan[section['family']];pattern=PATTERNS[policy['pattern']]
+                selected=[dict(n) for n in notes if section['start']<=n['t']<section['end']]
+                rows={}
+                for note in selected:rows.setdefault(note['t'],[]).append(note)
+                for index,(at,row) in enumerate(sorted(rows.items())):
+                    # Deterministic phase selection: all occurrences of a motif use the same pattern.
+                    fraction=float(policy['density'][level])
+                    phase=(at-section['start'])/max(.01,section['end']-section['start'])
+                    beat_index=round(phase*32)
+                    if len(row)==1 and index not in (0,len(rows)-1) and ((beat_index*13)%20)/20>=fraction:continue
+                    active={lane:end for lane,end in active.items() if end>at+.015}
+                    preferred=pattern[index%len(pattern)]
+                    # Keep measured chord cardinality unless existing holds occupy lanes.
+                    free=[(preferred+i)%4 for i in range(4) if (preferred+i)%4 not in active]
+                    for old,lane in zip(row,free):
+                        old['lane']=lane
+                        length=old['end']-at
+                        if length>.08:old['end']=round(at+length*policy.get('hold_length',1),5)
+                        if old['end']>at+.08:
+                            if len(active)>=2:old['end']=at
+                            else:active[lane]=old['end']
+                        changed.append(old)
+            diffs[difficulty]=sorted(changed,key=lambda n:(n['t'],n['lane']))
+    return out
+
+
+def refine(charts,audio,stems,bridge,job):
+    model=bridge.get_model()
+    if not model:raise ValueError('Choose an available Claude model in Settings > AI first')
+    available=json.loads(bridge.api('/v1/models','')).get('data',[])
+    if model not in {item.get('id') for item in available}:raise ValueError('Selected Claude model is not available to this API key. Refresh Models in Settings.')
+    measured=evidence(charts,audio,stems)
+    # One whole-song request: the model sees recurring families together, avoiding independent random chunks.
+    prompt={'task':'Plan coherent four-lane rhythm charts across six difficulties. Analyze every measured instrument and repeated family. Pick a consistent motif per family, progressively increasing density. Use corpus evidence as guidance, not quotas. Preserve rhythmic identity. You have audio measurements, not a listening session: do not invent musical claims.',
+        'measurements':measured,'allowed_patterns':PATTERNS,
+        'response_format':{'motifs':[{'family':'exact family id','pattern':'one allowed pattern','density':[.65,.75,.85,.9,.95,1.0],'hold_length':1}]},
+        'rules':['Include every family exactly once','Density must be nondecreasing and each value 0.55..1.0','hold_length is 0.5 or 1; never extend unsupported holds','Return JSON only']}
+    body={'model':model,'max_tokens':12000,'messages':[{'role':'user','content':json.dumps(prompt,separators=(',',':'))}]}
+    response=json.loads(bridge.api('/v1/messages',json.dumps(body)))
+    if response.get('stop_reason')=='max_tokens':raise ValueError('AI analysis was truncated. Retry without AI; no incomplete chart was saved.')
+    raw=''.join(item.get('text','') for item in response.get('content',[]) if item.get('type')=='text').strip()
+    if raw.startswith('```'):raw=raw.split('\n',1)[1].rsplit('```',1)[0]
+    plan=json.loads(raw)
+    result=apply_plan(charts,measured,plan)
+    # Validate the complete chart representation before the importer publishes anything.
+    from song_card import validate
+    duration=len(read_wav(audio)[0])/22050
+    validate({'schema':1,'category':'YouTube','source':'https://www.youtube.com/watch?v=dQw4w9WgXcQ','duration':duration,'charts':result})
+    job.update('AI phrase plan validated; measuring hype against the edited charts…',92)
+    return result
