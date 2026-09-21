@@ -383,6 +383,10 @@ func show_online_menu() -> void:
 	mobile_online_labels(ui)
 
 func mobile_online_labels(node: Node) -> void:
+	if node is OptionButton and node.item_count == 2 and node.get_item_text(0) == "LAN":
+		if not node.has_meta("phone_mode"):
+			node.set_meta("phone_mode", true)
+			node.item_selected.connect(func(_index): mobile_online_labels.call_deferred(ui))
 	if node is Label and "Up to four PCs" in node.text:
 		node.text = "One touch player per device · LAN or internet server"
 	if node is CheckBox and "Start a LAN server" in node.text:

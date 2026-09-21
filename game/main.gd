@@ -1830,7 +1830,7 @@ func _draw() -> void:
 	text_at(Vector2(w - 235, 40), format_time(time_s) + " / " + format_time(run_length), 18, MUTED)
 	draw_rect(Rect2(28, 60, w - 56, 3), Color("23304a"))
 	draw_rect(Rect2(28, 60, (w - 56) * clampf(time_s / maxf(1, run_length), 0, 1), 3), COLORS[0])
-	var track_w: float = minf(460, (w - 48 - (players_count - 1) * 18) / players_count)
+	var track_w: float = (w - 88 - (players_count - 1) * 18) / players_count
 	var start_x: float = (w - (track_w * players_count + 18 * (players_count - 1))) / 2
 	draw_song_visualizer(start_x)
 	var top: float = 170
