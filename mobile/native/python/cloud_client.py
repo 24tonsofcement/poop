@@ -46,7 +46,7 @@ def analyze_remote(audio,endpoint,token,job,bridge):
             if state=='done':
                 result=result['result']
                 if result.get('schema')!=1:raise ValueError('Incompatible cloud analysis version')
-                validate({'schema':1,'category':'YouTube','source':'https://www.youtube.com/watch?v=dQw4w9WgXcQ','duration':result['duration'],'charts':result['charts']})
+                validate({'schema':1,'category':'YouTube','source':'https://www.youtube.com/watch?v=dQw4w9WgXcQ','duration':result['duration'],'charts':result['charts'],'timing':result.get('timing'),'hype':result.get('hype')})
                 if 'Mixed' not in result['charts'] or not isinstance(result.get('evidence'),dict) or not result.get('timing'):
                     raise ValueError('Cloud analysis is incomplete')
                 return result

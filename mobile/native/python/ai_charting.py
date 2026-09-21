@@ -90,7 +90,7 @@ def evidence(charts,audio,stems):
                 'onset_strength':{str(v['t']):round(float(attacks[min(n-1,max(0,int(v['t']/.02)))]),6) for notes in diffs.values() for v in notes if start<=v['t']<start+span},
                 'supported_holds':int(sum(start<=v['t']<start+span and v['end']>v['t']+.08 for v in diffs.get('Expert',[])))})
         result[instrument]=sections
-    return {'timing':timing,'phrase_seconds':span,'instruments':result,'families':families,'reference':REFERENCE}
+    return {'duration':len(samples)/rate,'timing':timing,'phrase_seconds':span,'instruments':result,'families':families,'reference':REFERENCE}
 
 
 def validate_plan(plan,measured):
@@ -148,6 +148,7 @@ def apply_plan(charts,measured,plan):
 
 
 def refine(charts,audio,stems,bridge,job,measured=None,candidate_hype=None,cache_dir=None):
+    remote_measurements=measured is not None
     model=bridge.get_model()
     if not model:raise ValueError('Choose an available Claude model in Settings > AI first')
     available=json.loads(bridge.api('/v1/models','')).get('data',[])
@@ -214,7 +215,17 @@ def refine(charts,audio,stems,bridge,job,measured=None,candidate_hype=None,cache
     if not isinstance(keep,list) or any(not isinstance(k,str) or k not in candidates for k in keep) or len(keep)!=len(set(keep)):
         raise ValueError('Claude returned unsupported hype windows')
     # Recheck density after edits; a hype section must still fit the resulting chart.
-    rescored=detect_hype(audio,{LABELS[p.stem]:p for p in Path(stems).glob('*.wav') if p.stem in LABELS},charts=result)
+    if remote_measurements:
+        # Audio was already measured remotely. Only recheck edited note activity;
+        # do not discard instrument solos because their stems aren't on the phone.
+        rescored=copy.deepcopy(candidate_hype)
+        for scope,sections in [('global',rescored.get('global',[])),*rescored.get('instruments',{}).items()]:
+            def activity(source,section):
+                groups=source.values() if scope=='global' else [source.get(scope,{})]
+                return sum(1 for group in groups for note in group.get('Expert',[]) if section['start']<=note['t']<section['end'])
+            sections[:]=[section for section in sections if activity(result,section)>=max(1,.5*activity(charts,section))]
+    else:
+        rescored=detect_hype(audio,{LABELS[p.stem]:p for p in Path(stems).glob('*.wav') if p.stem in LABELS},charts=result)
     approved={'global':[], 'instruments':{}}
     for key in keep:
         candidate=candidates[key];scope=candidate['scope']
@@ -225,8 +236,10 @@ def refine(charts,audio,stems,bridge,job,measured=None,candidate_hype=None,cache
         else:approved['instruments'].setdefault(scope,[]).append(section)
     # Validate the complete chart representation before the importer publishes anything.
     from song_card import validate
-    samples,sample_rate=read_wav(audio)
-    duration=len(samples)/sample_rate
+    duration=measured.get('duration')
+    if duration is None:
+        samples,sample_rate=read_wav(audio)
+        duration=len(samples)/sample_rate
     validate({'schema':1,'category':'YouTube','source':'https://www.youtube.com/watch?v=dQw4w9WgXcQ','duration':duration,'charts':result})
     if cache:
         cache.parent.mkdir(parents=True,exist_ok=True)

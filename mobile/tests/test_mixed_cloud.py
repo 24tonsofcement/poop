@@ -30,6 +30,25 @@ class MixedTests(unittest.TestCase):
             song={'schema':1,'category':'YouTube','source':'https://www.youtube.com/watch?v=dQw4w9WgXcQ','duration':16,'charts':charts}
             stream=io.BytesIO();Image.new('RGB',(32,32)).save(stream,format='PNG')
             self.assertEqual(decode(encode(stream.getvalue(),song))['charts'],charts)
+    def test_remote_review_preserves_supported_solo_without_local_stems(self):
+        class Bridge:
+            def get_model(self):return 'test'
+            def api(self,path,body):
+                if path=='/v1/models':return json.dumps({'data':[{'id':'test'}]})
+                prompt=json.loads(json.loads(body)['messages'][0]['content'])
+                plan={'motifs':[{'family':f,'pattern':'roll','density':[1]*6,'hold_length':1} for f in prompt['families']], 'hype_keep':list(prompt['hype_candidates'])}
+                return json.dumps({'stop_reason':'end_turn','content':[{'type':'text','text':json.dumps(plan)}]})
+        class Job:
+            def update(self,*args):pass
+        notes=[{'t':i*.5,'end':i*.5,'lane':i%4} for i in range(1,16)]
+        charts={'Guitar':{d:copy.deepcopy(notes) for d in LEVELS}}
+        measured={'duration':8,'timing':[{'t':0,'beat_length':.5,'meter':4}], 'families':['Guitar:0'],
+            'instruments':{'Guitar':[{'family':'Guitar:0','start':0,'end':8,'energy':1,'bpm':120,'energy_change':.4,'silence_fraction':0}]}}
+        candidate={'global':[],'instruments':{'Guitar':[{'start':1,'end':7,'confidence':.9}]}}
+        with patch('ai_charting.read_wav',side_effect=AssertionError('Cloud review must not reanalyze audio')):
+            result,hype=refine(charts,None,None,Bridge(),Job(),measured=measured,candidate_hype=candidate)
+        self.assertEqual(hype['instruments']['Guitar'],candidate['instruments']['Guitar'])
+
     def test_budget_does_not_call_generation_api(self):
         class Bridge:
             def get_model(self):return 'test'
