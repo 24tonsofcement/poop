@@ -14,11 +14,11 @@ for abi in arm64-v8a x86_64; do
   mkdir -p "android/build/native-libs/$abi"
   cp "$build_dir/libpulse_demucs.so" "android/build/native-libs/$abi/"
 done
-mkdir -p android/build/assets
-curl --fail --retry 3 -L -o android/build/assets/htdemucs-6s-f16.bin \
+mkdir -p android/build/native-assets
+curl --fail --retry 3 -L -o android/build/native-assets/htdemucs-6s-f16.bin \
  https://huggingface.co/datasets/Retrobear/demucs.cpp/resolve/main/ggml-model-htdemucs-6s-f16.bin
-echo '09704f4ceae204e56e77d5eefd6ac71d7275be81fd507e6913371d59abcee856  android/build/assets/htdemucs-6s-f16.bin' | sha256sum --check
+echo '09704f4ceae204e56e77d5eefd6ac71d7275be81fd507e6913371d59abcee856  android/build/native-assets/htdemucs-6s-f16.bin' | sha256sum --check
 # Fail rather than package an HTML error or an incomplete model.
-test "$(stat -c%s android/build/assets/htdemucs-6s-f16.bin)" -gt 40000000
-mkdir -p android/build/assets/licenses
-cp "$source_dir/LICENSE" android/build/assets/licenses/demucs-cpp.txt
+test "$(stat -c%s android/build/native-assets/htdemucs-6s-f16.bin)" -gt 40000000
+mkdir -p android/build/native-assets/licenses
+cp "$source_dir/LICENSE" android/build/native-assets/licenses/demucs-cpp.txt

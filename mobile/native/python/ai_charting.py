@@ -109,11 +109,17 @@ def refine(charts,audio,stems,bridge,job):
     available=json.loads(bridge.api('/v1/models','')).get('data',[])
     if model not in {item.get('id') for item in available}:raise ValueError('Selected Claude model is not available to this API key. Refresh Models in Settings.')
     measured=evidence(charts,audio,stems)
+    from hype import detect_hype
+    candidate_hype=detect_hype(audio,{LABELS[p.stem]:p for p in Path(stems).glob('*.wav') if p.stem in LABELS},charts=charts)
+    candidates={}
+    for scope,sections in [('global',candidate_hype.get('global',[])),*candidate_hype.get('instruments',{}).items()]:
+        for index,section in enumerate(sections):candidates[f'{scope}:{index}']={'scope':scope,**section}
+    measured['hype_candidates']=candidates
     # One whole-song request: the model sees recurring families together, avoiding independent random chunks.
     prompt={'task':'Plan coherent four-lane rhythm charts across six difficulties. Analyze every measured instrument and repeated family. Pick a consistent motif per family, progressively increasing density. Use corpus evidence as guidance, not quotas. Preserve rhythmic identity. You have audio measurements, not a listening session: do not invent musical claims.',
         'measurements':measured,'allowed_patterns':PATTERNS,
-        'response_format':{'motifs':[{'family':'exact family id','pattern':'one allowed pattern','density':[.65,.75,.85,.9,.95,1.0],'hold_length':1}]},
-        'rules':['Include every family exactly once','Density must be nondecreasing and each value 0.55..1.0','hold_length is 0.5 or 1; never extend unsupported holds','Return JSON only']}
+        'response_format':{'motifs':[{'family':'exact family id','pattern':'one allowed pattern','density':[.65,.75,.85,.9,.95,1.0],'hold_length':1}], 'hype_keep':['exact candidate id']},
+        'rules':['Include every family exactly once','Density must be nondecreasing and each value 0.55..1.0','hold_length is 0.5 or 1; never extend unsupported holds','hype_keep may only contain supplied candidate IDs; keep strong lifts/drops or clear instrument solos, reject ambiguous candidates. An empty list is allowed.', 'Return JSON only']}
     body={'model':model,'max_tokens':12000,'messages':[{'role':'user','content':json.dumps(prompt,separators=(',',':'))}]}
     response=json.loads(bridge.api('/v1/messages',json.dumps(body)))
     if response.get('stop_reason')=='max_tokens':raise ValueError('AI analysis was truncated. Retry without AI; no incomplete chart was saved.')
@@ -121,9 +127,23 @@ def refine(charts,audio,stems,bridge,job):
     if raw.startswith('```'):raw=raw.split('\n',1)[1].rsplit('```',1)[0]
     plan=json.loads(raw)
     result=apply_plan(charts,measured,plan)
+    keep=plan.get('hype_keep')
+    if not isinstance(keep,list) or any(not isinstance(k,str) or k not in candidates for k in keep) or len(keep)!=len(set(keep)):
+        raise ValueError('Claude returned unsupported hype windows')
+    # Recheck density after edits; a hype section must still fit the resulting chart.
+    rescored=detect_hype(audio,{LABELS[p.stem]:p for p in Path(stems).glob('*.wav') if p.stem in LABELS},charts=result)
+    approved={'global':[], 'instruments':{}}
+    for key in keep:
+        candidate=candidates[key];scope=candidate['scope']
+        checks=rescored.get('global',[]) if scope=='global' else rescored.get('instruments',{}).get(scope,[])
+        if not any(min(c['end'],candidate['end'])-max(c['start'],candidate['start']) > .5*(candidate['end']-candidate['start']) for c in checks):continue
+        section={k:v for k,v in candidate.items() if k!='scope'}
+        if scope=='global':approved['global'].append(section)
+        else:approved['instruments'].setdefault(scope,[]).append(section)
     # Validate the complete chart representation before the importer publishes anything.
     from song_card import validate
-    duration=len(read_wav(audio)[0])/22050
+    samples,sample_rate=read_wav(audio)
+    duration=len(samples)/sample_rate
     validate({'schema':1,'category':'YouTube','source':'https://www.youtube.com/watch?v=dQw4w9WgXcQ','duration':duration,'charts':result})
     job.update('AI phrase plan validated; measuring hype against the edited charts…',92)
-    return result
+    return result,approved

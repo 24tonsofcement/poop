@@ -59,13 +59,26 @@ def run(request_json, bridge):
             if request.get('ai'):
                 from ai_charting import refine
                 original=worker.instrument_charts
+                original_hype=worker.song_hype
+                original_commit=worker.commit_pack
+                approved_hype=None
                 def assisted(audio,temp,job):
+                    nonlocal approved_hype
                     charts=original(audio,temp,job)
                     job.update('Claude: reviewing measured musical phrases and chart flow…',88)
-                    return refine(charts,audio,temp/'stems'/worker.MODEL/audio.stem,bridge,job)
+                    edited,approved_hype=refine(charts,audio,temp/'stems'/worker.MODEL/audio.stem,bridge,job)
+                    return edited
                 worker.instrument_charts=assisted
+                worker.song_hype=lambda *args,**kwargs: approved_hype
+                def ai_commit(work,library,pack):
+                    pack['generator'] += ' + Claude evidence-constrained editor ('+bridge.get_model()+')'
+                    return original_commit(work,library,pack)
+                worker.commit_pack=ai_commit
                 try: paths,warnings=worker.import_youtube(request['source'],library,temp,job)
-                finally: worker.instrument_charts=original
+                finally:
+                    worker.instrument_charts=original
+                    worker.song_hype=original_hype
+                    worker.commit_pack=original_commit
             else: paths,warnings=worker.import_youtube(request['source'],library,temp,job)
         else: raise ValueError('Unsupported phone import')
     return json.dumps({'message':'Import complete','paths':paths,'warnings':warnings})
