@@ -19,7 +19,7 @@ adb shell run-as "$package" cat shared_prefs/private_import.xml > release/upgrad
 python - <<'VERIFY'
 import json,xml.etree.ElementTree as ET
 s=json.load(open('release/upgrade-settings.json'))
-assert s['volume']==0.37 and s['offset']==42 and s['scroll_speed']==777
+assert abs(s['volume']-0.37)<0.000001 and s['offset']==42 and s['scroll_speed']==777
 p={e.attrib['name']:e.text for e in ET.parse('release/upgrade-prefs.xml').getroot()}
 assert p['model']=='upgrade-test-model' and p['last_import']=='content://test/import' and p['last_export']=='content://test/export'
 VERIFY
