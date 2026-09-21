@@ -71,9 +71,9 @@ def evidence(charts,audio,stems):
                 'energy':round(float(np.mean(power[a:b]))/maximum,3),
                 'attack_contour':np.round(unit,3).tolist(),
                 'pitch_class_contour':np.argmax(chroma.reshape(16,12),axis=1).tolist(),
-                'difficulty_notes':{d:sum(start<=v['t']<start+span for v in notes) for d,notes in diffs.items()},
+                'difficulty_notes':{d:int(sum(start<=v['t']<start+span for v in notes)) for d,notes in diffs.items()},
                 'onset_strength':{str(v['t']):round(float(attacks[min(n-1,max(0,int(v['t']/.02)))]),6) for notes in diffs.values() for v in notes if start<=v['t']<start+span},
-                'supported_holds':sum(start<=v['t']<start+span and v['end']>v['t']+.08 for v in diffs.get('Expert',[]))})
+                'supported_holds':int(sum(start<=v['t']<start+span and v['end']>v['t']+.08 for v in diffs.get('Expert',[])))})
         result[instrument]=sections
     return {'timing':timing,'phrase_seconds':span,'instruments':result,'families':families,'reference':REFERENCE}
 

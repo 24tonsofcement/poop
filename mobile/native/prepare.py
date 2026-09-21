@@ -6,6 +6,7 @@ root=Path('android/build')
 root.parent.joinpath('.build_version').write_text('4.4.1.stable')
 root.parent.joinpath('.gdignore').touch()
 s=root.joinpath('build.gradle').read_text().replace("id 'org.jetbrains.kotlin.android'", "id 'org.jetbrains.kotlin.android'\n    id 'com.chaquo.python' version '17.0.0'")
+s=s.replace('minSdkVersion getExportMinSdkVersion()', 'minSdkVersion Math.max(26, Integer.parseInt(getExportMinSdkVersion().toString()))')
 s=s.replace('dependencies {','''dependencies {
     implementation 'io.github.junkfood02.youtubedl-android:library:0.18.1'
     implementation 'io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1'

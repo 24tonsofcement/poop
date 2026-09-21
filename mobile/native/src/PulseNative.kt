@@ -103,6 +103,9 @@ class PulseNative(godot: Godot): GodotPlugin(godot) {
             return connection.inputStream.bufferedReader().use{it.readText()}
         }finally{connection.disconnect()}
     }
+    @UsedByGodot fun update_downloader() {
+        executor.execute {try {initialize();progress("Updating the bundled downloader…",0.0);YoutubeDL.updateYoutubeDL(context);progress("Downloader is up to date",100.0)}catch(e:Exception){fail(e)}}
+    }
     @UsedByGodot fun list_models() {
         executor.execute {try {val data=JSONObject(api("/v1/models","")); status=JSONObject().put("state","models").put("models",data.getJSONArray("data")).put("message","Choose the exact model available to your account").toString()}
         catch(e:Exception){fail(e)}}
@@ -199,7 +202,7 @@ class PulseNative(godot: Godot): GodotPlugin(godot) {
         if(requestCode==6101&&resultCode==Activity.RESULT_OK&&data!=null){
             val uris=mutableListOf<Uri>();data.clipData?.let{for(i in 0 until it.itemCount)uris.add(it.getItemAt(i).uri)}?:data.data?.let{uris.add(it)}
             if(uris.isNotEmpty())prefs.edit().putString("last_import",uris.first().toString()).apply()
-            importNext(uris.take(100),0)
+            executor.execute { importNext(uris.take(100),0) }
         }
     }
     private fun importNext(uris:List<Uri>,index:Int) {

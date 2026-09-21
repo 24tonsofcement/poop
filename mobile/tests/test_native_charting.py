@@ -43,3 +43,33 @@ class NativeChartTests(unittest.TestCase):
         damaged=bytearray(encode(stream.getvalue(),song));damaged[-20]^=1
         with self.assertRaises(ValueError):decode(damaged)
 if __name__=='__main__':unittest.main()
+
+class AssistedPipelineTests(unittest.TestCase):
+    def test_full_assisted_request_uses_measured_ids_and_preserves_valid_cards(self):
+        import json,tempfile,wave
+        import numpy as np
+        from ai_charting import refine
+        class Bridge:
+            calls=0
+            def get_model(self):return 'test-model'
+            def api(self,path,body):
+                if path=='/v1/models':return json.dumps({'data':[{'id':'test-model'}]})
+                self.calls+=1
+                prompt=json.loads(json.loads(body)['messages'][0]['content'])
+                measured=prompt['measurements']
+                assert measured['reference']['measured_corpus']['charts']==169
+                return json.dumps({'stop_reason':'end_turn','content':[{'type':'text','text':json.dumps({'motifs':[{'family':f,'pattern':'alternate','density':[1]*6,'hold_length':1} for f in measured['families']], 'hype_keep':list(measured['hype_candidates'])})}]})
+        class Job:
+            def update(self,*args):pass
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp);audio=folder/'drums.wav';rate=44100;t=np.arange(rate*8)/rate
+            x=.3*np.sin(2*np.pi*220*t)*np.maximum(0,1-(t%.25)/.1)
+            with wave.open(str(audio),'wb') as wav:
+                wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(rate);wav.writeframes((x*32767).astype('<i2').tobytes())
+            notes=[{'t':i*.25+.01,'end':i*.25+.01,'lane':i%4} for i in range(1,30)]
+            charts={'Drums':{level:copy.deepcopy(notes) for level in LEVELS}}
+            bridge=Bridge();out,hype=refine(charts,audio,folder,bridge,Job())
+            self.assertGreater(bridge.calls,0)
+            self.assertEqual(set(out['Drums']),set(LEVELS))
+            self.assertEqual(out['Drums']['Expert'][0]['t'],notes[0]['t'])
+            self.assertIn('global',hype)

@@ -215,11 +215,14 @@ func show_settings() -> void:
 	var connection = settings_page(tabs, "Songs & AI", "ON-DEVICE IMPORTER", "Six-stem audio analysis runs on this phone. AI is optional and needs internet/API credit.")
 	button_into(connection, "Manage / import songs", show_mobile_library)
 	if native_importer != null:
+		button_into(connection, "Update media downloader", func(): native_importer.update_downloader())
 		button_into(connection, "Enter private Claude API key", func(): native_importer.enter_key())
 		button_into(connection, "Remove API key", func(): native_importer.clear_key())
 		button_into(connection, "Refresh available Claude models", func(): native_importer.list_models())
 		label_into(connection, "Selected model: " + str(native_importer.get_model()), 16)
 		model_list = box_into(connection)
+		native_last_status = ""
+		poll_native_import.call_deferred()
 	else:
 		label_into(connection, "Install the standalone APK to enable phone generation.", 17)
 
@@ -295,6 +298,7 @@ func remove_song_dir(path: String) -> void:
 func message_phone(message: String) -> void:
 	last_message = message
 	if is_instance_valid(phone_status): phone_status.text = message
+	if is_instance_valid(status_label): status_label.text = message
 
 func companion_request(path: String, method: int = HTTPClient.METHOD_GET, body: String = "") -> Dictionary:
 	if not companion_url.begins_with("http://") and not companion_url.begins_with("https://"):
