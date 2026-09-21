@@ -12,6 +12,7 @@ var model_list: VBoxContainer
 func _ready() -> void:
 	var config = ConfigFile.new()
 	if config.load("user://mobile.cfg") == OK:
+		ai_enabled = bool(config.get_value("generation", "ai_enabled", false))
 		companion_url = str(config.get_value("companion", "url", ""))
 		companion_token = str(config.get_value("companion", "token", ""))
 	if Engine.has_singleton("PulseNative"):
@@ -259,7 +260,12 @@ func show_mobile_library() -> void:
 	var ai = CheckBox.new()
 	ai.text = "Claude-assisted charts (uses API credit)"
 	ai.button_pressed = ai_enabled
-	ai.toggled.connect(func(value): ai_enabled = value)
+	ai.toggled.connect(func(value):
+		ai_enabled = value
+		var config = ConfigFile.new()
+		config.load("user://mobile.cfg")
+		config.set_value("generation", "ai_enabled", value)
+		config.save("user://mobile.cfg"))
 	root.add_child(ai)
 	button_into(root, "Generate on this device", func():
 		if native_importer != null: native_importer.generate(link.text, song_root, ai_enabled)

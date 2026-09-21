@@ -1937,7 +1937,8 @@ func _draw() -> void:
 			text_at(Vector2(x + 15, hit - 48), str(r.message), 25 + int(5 * float(r.flash) / 0.6), Color("fa7f96") if r.message == "MISS" else WHITE)
 		if visual_effects.miss_flash and r.message == "MISS" and r.flash > 0:
 			draw_rect(Rect2(x, top, track_w, hit - top), Color(1, 0.18, 0.3, float(r.flash) * 0.6), false, 3.0)
-		text_at(Vector2(x, h - 36), "BEST %d×   MISSES %d" % [r.best, r.miss], 14, MUTED)
+		if not OS.has_feature("android"):
+			text_at(Vector2(x, h - 36), "BEST %d×   MISSES %d" % [r.best, r.miss], 14, MUTED)
 	if time_s < 0:
 		text_at(Vector2(w / 2 - 55, h / 2), str(int(ceil(-time_s))), 82, WHITE)
 	if online_game:
@@ -1947,7 +1948,8 @@ func _draw() -> void:
 			text_at(Vector2(28, remote_y), str(peer.name), 16, WHITE, 245)
 			text_at(Vector2(28, remote_y + 23), "%d pts · %d streak" % [int(peer.score), int(peer.combo)], 14, MUTED, 245)
 			remote_y += 60
-	text_at(Vector2(28, h - 16), "ESC  Leave online round" if online_game else "ESC  Pause       F5  Restart", 13, MUTED)
+	if not OS.has_feature("android"):
+		text_at(Vector2(28, h - 16), "ESC  Leave online round" if online_game else "ESC  Pause       F5  Restart", 13, MUTED)
 
 func show_results() -> void:
 	last_timing.clear()

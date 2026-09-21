@@ -6,12 +6,14 @@ adb install --no-incremental -r release/previous.apk
 adb shell run-as "$package" mkdir -p files shared_prefs
 printf '%s' '{"volume":0.37,"offset":42,"scroll_speed":777}' | adb shell run-as "$package" sh -c "'cat > files/settings.json'"
 printf '%s' '<?xml version="1.0" encoding="utf-8"?><map><string name="model">upgrade-test-model</string><string name="last_import">content://test/import</string><string name="last_export">content://test/export</string></map>' | adb shell run-as "$package" sh -c "'cat > shared_prefs/private_import.xml'"
+printf '[generation]\nai_enabled=true\n' | adb shell run-as "$package" sh -c "'cat > files/mobile.cfg'"
 adb shell run-as "$package" sh -c "'echo retained-song-data > files/preserved-song-test'"
 adb install --no-incremental -r release/PulseFour-Android.apk
 adb shell settings put secure immersive_mode_confirmations confirmed
 adb shell am start -n "$package/com.godot.game.GodotApp" --es pulse_update_probe seed
 sleep 20
 adb shell run-as "$package" cat files/update-probe-result | grep '^PASS:'
+adb shell run-as "$package" cat files/mobile.cfg | grep ai_enabled=true
 adb shell run-as "$package" cat files/settings.json > release/upgrade-settings.json
 adb shell run-as "$package" cat shared_prefs/private_import.xml > release/upgrade-prefs.xml
 python - <<'VERIFY'
