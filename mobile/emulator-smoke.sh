@@ -33,4 +33,13 @@ adb shell pidof "$package"
 adb shell run-as "$package" test -f files/update-preservation-test
 adb shell run-as "$package" test ! -f files/update-trial
 adb logcat -d > dist/android-logcat.txt
-if grep -E 'FATAL EXCEPTION|SCRIPT ERROR|Parse Error|FAIL:' dist/android-logcat.txt; then exit 1; fi
+if grep -E 'FATAL EXCEPTION|SCRIPT ERROR|Parse Error|FAIL:|E godot.*ERROR:' dist/android-logcat.txt; then exit 1; fi
+
+python - <<'PYTEST'
+from PIL import Image
+for path in ['dist/android-menu.png', 'dist/android-gameplay.png']:
+    image = Image.open(path).convert('RGB')
+    width, height = image.size
+    colors = image.crop((100, 100, width - 150, height - 100)).getcolors(5000)
+    assert colors is None or len(colors) > 100, f'Blank Android render: {path}'
+PYTEST

@@ -44,7 +44,7 @@ jobs:
           CONFIG
       - name: Validate scripts and touch gameplay
         run: |
-          python -m pip install numpy==1.26.4
+          python -m pip install numpy==1.26.4 Pillow==11.1.0
           python scripts/make_demo.py --audio-only
           python -m unittest discover -s mobile/tests -v
           timeout 120 godot --headless --editor --path . --import 2>&1 | tee /tmp/import.log
@@ -72,6 +72,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
+          emulator-options: -no-window -gpu swangle -no-snapshot -noaudio -no-boot-anim
           script: bash mobile/emulator-smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()

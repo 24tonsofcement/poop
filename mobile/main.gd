@@ -426,3 +426,10 @@ func show_results() -> void:
 			scroll.add_child(panel)
 			panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			break
+
+func apply_window_mode() -> void:
+	if OS.has_feature("android"):
+		fullscreen = true
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	else:
+		super.apply_window_mode()
