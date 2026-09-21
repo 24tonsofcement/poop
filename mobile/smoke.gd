@@ -34,6 +34,9 @@ func run() -> void:
 	check(not game.runs[0].held[0] and game.runs[0].held[1], "independent finger release")
 	game.toggle_pause()
 	check(game.fingers.is_empty(), "pause clears touch state")
+	check(FileAccess.file_exists(str(game.network_source_song().folder).path_join("audio.wav")), "demo available for lobby sharing")
+	game.show_results()
+	await process_frame
 	game.show_settings()
 	await process_frame
 	game.show_mobile_library()

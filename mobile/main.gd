@@ -394,3 +394,35 @@ func mobile_online_labels(node: Node) -> void:
 		node.disabled = true
 		node.hide()
 	for child in node.get_children(): mobile_online_labels(child)
+
+func network_source_song() -> Dictionary:
+	var song: Dictionary = selected.duplicate(true)
+	if str(song.get("folder", "")).begins_with("res://"):
+		var destination = ProjectSettings.globalize_path("user://shared-demo")
+		DirAccess.make_dir_recursive_absolute(destination)
+		var path = destination.path_join("audio.wav")
+		if not FileAccess.file_exists(path):
+			var stream = load(str(song.folder).path_join("audio.wav")) as AudioStreamWAV
+			if stream != null: stream.save_to_wav(path)
+		song.folder = destination
+	return song
+
+func show_results() -> void:
+	super.show_results()
+	# Reuse score/calibration persistence, but allow the result card to scroll on phones.
+	for child in ui.get_children():
+		if child is CenterContainer and child.get_child_count() > 0:
+			var panel = child.get_child(0)
+			child.remove_child(panel)
+			ui.remove_child(child)
+			child.queue_free()
+			var scroll = ScrollContainer.new()
+			scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			scroll.offset_left = 44
+			scroll.offset_right = -44
+			scroll.offset_top = 12
+			scroll.offset_bottom = -12
+			ui.add_child(scroll)
+			scroll.add_child(panel)
+			panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			break
