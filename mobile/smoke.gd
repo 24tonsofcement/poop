@@ -16,6 +16,9 @@ func run() -> void:
 	game.start_game()
 	await process_frame
 	check(game.screen == "game", "demo playable")
+	if game.runs.is_empty():
+		quit(1)
+		return
 	# Simultaneous chords, shared-lane fingers and independent release.
 	for index in range(4):
 		var touch = InputEventScreenTouch.new()

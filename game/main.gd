@@ -1864,7 +1864,7 @@ func _draw() -> void:
 				draw_rect(Rect2(left + 3, hit - 22, lane_w - 6, 44), Color(LANE_COLORS[lane], flash * 0.45))
 			draw_line(road_point(x, track_w, top, hit, lane, top), road_point(x, track_w, top, hit, lane, hit), Color(WHITE, highway_opacity * 0.38), 1.5, true)
 			draw_note_sprite(Vector2(left + lane_w / 2, hit), lane_w, Color(LANE_COLORS[lane], 0.55))
-			var name: String = OS.get_keycode_string(int(bindings[p][lane]))
+			var name: String = "TOUCH " + str(lane + 1)
 			text_at(Vector2(left + 12, hit + 35), name, 16, LANE_COLORS[lane], lane_w - 15)
 		draw_line(road_point(x, track_w, top, hit, 4, top), road_point(x, track_w, top, hit, 4, hit), Color(WHITE, highway_opacity * 0.38), 1.5, true)
 		var now: float = chart_time()
