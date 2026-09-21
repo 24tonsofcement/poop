@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euxo pipefail
+capture() {
+  adb logcat -d > dist/android-logcat.txt || true
+  adb exec-out screencap -p > dist/android-last-screen.png || true
+  grep -E 'FATAL|fatal|SIGSEGV|SIGABRT|SCRIPT ERROR|ERROR:|Godot|godot' dist/android-logcat.txt | tail -100 || true
+}
+trap capture EXIT
 package=org.pulsefour.mobile
-adb install -r dist/PulseFour-Android.apk
+adb install --no-incremental -r dist/PulseFour-Android.apk
 adb logcat -c
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
 sleep 18
