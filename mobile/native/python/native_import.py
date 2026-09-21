@@ -2,6 +2,10 @@
 import json
 import tempfile
 import io
+import os
+import shutil
+import certifi
+os.environ["SSL_CERT_FILE"]=certifi.where()
 from pathlib import Path
 import worker
 
@@ -10,6 +14,9 @@ def run(request_json, bridge):
     request = json.loads(request_json)
     library = Path(request['library']).resolve()
     library.mkdir(parents=True, exist_ok=True)
+    # Jobs are serialized by the native plugin; these can only be interrupted leftovers.
+    for leftover in library.glob('.import-*'):
+        if leftover.is_dir():shutil.rmtree(leftover)
     class PhoneJob:
         cancel = None
         def update(self, message, progress=0):
@@ -30,6 +37,8 @@ def run(request_json, bridge):
     job = PhoneJob()
     worker.binary = lambda name: '__yt-dlp' if name=='yt-dlp' else '__unused_deno' if name=='deno' else bridge.binary(name)
     def separate(audio, temp, job):
+        if shutil.disk_usage(temp).free < audio.stat().st_size*19+200_000_000:
+            raise ValueError('Not enough temporary storage for six-stem analysis. Free some space and retry.')
         separated = temp/'stems'
         output = separated/worker.MODEL/audio.stem
         output.mkdir(parents=True)

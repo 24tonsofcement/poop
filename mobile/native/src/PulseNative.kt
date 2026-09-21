@@ -36,7 +36,7 @@ class PulseNative(godot: Godot): GodotPlugin(godot) {
     private val cancelled = AtomicBoolean(false)
     private val busy = AtomicBoolean(false)
     @Volatile private var status = "{\"state\":\"idle\",\"message\":\"Ready for on-device generation\"}"
-    @Volatile private var process: Process? = null
+    @Volatile private var process: java.lang.Process? = null
     private var library = ""
     private var exportFile: File? = null
     private val context get() = requireNotNull(activity).applicationContext

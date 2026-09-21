@@ -18,6 +18,15 @@ REFERENCE={
  'Reserve triples and quads for strong accents','Short supported sustains add variety; long holds need sustained evidence',
  'At most two simultaneous holds; chords may have four lanes','Do not change the musical voice followed midway through a phrase']}
 
+from mania_prior import PRIOR
+from itertools import permutations
+REFERENCE['measured_corpus']=PRIOR
+# Additional grammars are ranked by measured transition likelihoods, not randomness.
+_matrix=np.asarray(PRIOR['transitions'],dtype=float)+1
+_matrix/=_matrix.sum(axis=1,keepdims=True)
+_grams=sorted(permutations(range(4)),key=lambda p:-sum(float(np.log(_matrix[a,b])) for a,b in zip(p,p[1:])))
+for _pattern in _grams[:16]:PATTERNS['corpus_'+''.join(map(str,_pattern))]=list(_pattern)
+
 
 def evidence(charts,audio,stems):
     timing=estimate_timing(audio)
@@ -63,6 +72,7 @@ def evidence(charts,audio,stems):
                 'attack_contour':np.round(unit,3).tolist(),
                 'pitch_class_contour':np.argmax(chroma.reshape(16,12),axis=1).tolist(),
                 'difficulty_notes':{d:sum(start<=v['t']<start+span for v in notes) for d,notes in diffs.items()},
+                'onset_strength':{str(v['t']):round(float(attacks[min(n-1,max(0,int(v['t']/.02)))]),6) for notes in diffs.values() for v in notes if start<=v['t']<start+span},
                 'supported_holds':sum(start<=v['t']<start+span and v['end']>v['t']+.08 for v in diffs.get('Expert',[]))})
         result[instrument]=sections
     return {'timing':timing,'phrase_seconds':span,'instruments':result,'families':families,'reference':REFERENCE}
@@ -96,12 +106,16 @@ def apply_plan(charts,measured,plan):
                 selected=[dict(n) for n in notes if section['start']<=n['t']<section['end']]
                 rows={}
                 for note in selected:rows.setdefault(note['t'],[]).append(note)
+                strengths=section.get('onset_strength',{})
+                fraction=float(policy['density'][level])
+                ordered=sorted(rows)
+                # Keep the strongest measured attacks, with beat alignment only as a tie-breaker.
+                # No hash, random sample, or invented time controls musical density.
+                ranked=sorted(ordered,key=lambda at:(-float(strengths.get(str(at),1)),abs(((at-section['start'])/(measured.get('phrase_seconds',4)/8)+.5)%1-.5),at))
+                retain=set(ranked[:max(1,round(len(rows)*fraction))])
+                if ordered: retain.update((ordered[0],ordered[-1]))
                 for index,(at,row) in enumerate(sorted(rows.items())):
-                    # Deterministic phase selection: all occurrences of a motif use the same pattern.
-                    fraction=float(policy['density'][level])
-                    phase=(at-section['start'])/max(.01,section['end']-section['start'])
-                    beat_index=round(phase*32)
-                    if len(row)==1 and index not in (0,len(rows)-1) and ((beat_index*13)%20)/20>=fraction:continue
+                    if len(row)==1 and at not in retain:continue
                     active={lane:end for lane,end in active.items() if end>at+.015}
                     preferred=pattern[index%len(pattern)]
                     # Keep measured chord cardinality unless existing holds occupy lanes.
@@ -135,12 +149,26 @@ def refine(charts,audio,stems,bridge,job):
         'measurements':measured,'allowed_patterns':PATTERNS,
         'response_format':{'motifs':[{'family':'exact family id','pattern':'one allowed pattern','density':[.65,.75,.85,.9,.95,1.0],'hold_length':1}], 'hype_keep':['exact candidate id']},
         'rules':['Include every family exactly once','Density must be nondecreasing and each value 0.55..1.0','hold_length is 0.5 or 1; never extend unsupported holds','hype_keep may only contain supplied candidate IDs; keep strong lifts/drops or clear instrument solos, reject ambiguous candidates. An empty list is allowed.', 'Return JSON only']}
-    body={'model':model,'max_tokens':12000,'messages':[{'role':'user','content':json.dumps(prompt,separators=(',',':'))}]}
-    response=json.loads(bridge.api('/v1/messages',json.dumps(body)))
-    if response.get('stop_reason')=='max_tokens':raise ValueError('AI analysis was truncated. Retry without AI; no incomplete chart was saved.')
-    raw=''.join(item.get('text','') for item in response.get('content',[]) if item.get('type')=='text').strip()
-    if raw.startswith('```'):raw=raw.split('\n',1)[1].rsplit('```',1)[0]
-    plan=json.loads(raw)
+    families=measured['families']
+    plan={'motifs':[], 'hype_keep':[]}
+    batches=[families[i:i+48] for i in range(0,len(families),48)]
+    overview={instrument:[{k:v for k,v in section.items() if k not in ('attack_contour','onset_strength')} for section in sections] for instrument,sections in measured['instruments'].items()}
+    for index,batch in enumerate(batches):
+        job.update(f'Claude: reviewing phrase group {index+1}/{len(batches)}…',88+3*index/max(1,len(batches)))
+        current=copy.deepcopy(prompt)
+        current['whole_song_structure']=overview
+        current['measurements']['families']=batch
+        current['measurements']['instruments']={part:[{k:v for k,v in section.items() if k!='onset_strength'} for section in sections if section['family'] in batch] for part,sections in measured['instruments'].items()}
+        current['rules'].append('Return motifs only for the supplied families in this batch; use whole_song_structure for context. Give a whole-song hype_keep decision.')
+        body={'model':model,'max_tokens':8000,'messages':[{'role':'user','content':json.dumps(current,separators=(',',':'))}]}
+        response=json.loads(bridge.api('/v1/messages',json.dumps(body)))
+        if response.get('stop_reason')=='max_tokens':raise ValueError('AI analysis was truncated. Retry without AI; no incomplete chart was saved.')
+        raw=''.join(item.get('text','') for item in response.get('content',[]) if item.get('type')=='text').strip()
+        if raw.startswith('```'):raw=raw.split('\n',1)[1].rsplit('```',1)[0]
+        partial=json.loads(raw)
+        validate_plan(partial,{'families':batch})
+        plan['motifs'].extend(partial['motifs'])
+        if index==0:plan['hype_keep']=partial.get('hype_keep')
     result=apply_plan(charts,measured,plan)
     keep=plan.get('hype_keep')
     if not isinstance(keep,list) or any(not isinstance(k,str) or k not in candidates for k in keep) or len(keep)!=len(set(keep)):

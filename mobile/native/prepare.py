@@ -18,6 +18,7 @@ chaquopy {
             install 'numpy'
             install 'scipy==1.8.1'
             install 'Pillow'
+            install 'certifi'
         }
     }
     sourceSets { getByName('main') { srcDir 'python' } }
@@ -33,7 +34,7 @@ shutil.copytree('mobile/native/python',root/'python',dirs_exist_ok=True)
 for name in ['worker','charting','arrangement','instruments','hype','timing','sources','song_card','static_background']:
     shutil.copy2(f'importer/{name}.py',root/f'python/{name}.py')
 # Pillow Android wheel may predate scalable load_default; use bundled Android fonts instead.
-p=root/'python/song_card.py';s=p.read_text().replace("ImageFont.load_default(size=22)","ImageFont.truetype('/system/fonts/Roboto-Regular.ttf',22)").replace("ImageFont.load_default(size=15)","ImageFont.truetype('/system/fonts/Roboto-Regular.ttf',15)");p.write_text(s)
+p=root/'python/song_card.py';s=p.read_text().replace("ImageFont.load_default(size=22)","ImageFont.truetype('/system/fonts/Roboto-Regular.ttf',22)").replace("ImageFont.load_default(size=15)","ImageFont.truetype('/system/fonts/Roboto-Regular.ttf',15)").replace("['C:/Windows/Fonts/meiryo.ttc'", "['/system/fonts/NotoSansCJK-Regular.ttc', 'C:/Windows/Fonts/meiryo.ttc'");p.write_text(s)
 a='{http://schemas.android.com/apk/res/android}'
 ET.register_namespace('android',a[1:-1]);ET.register_namespace('tools','http://schemas.android.com/tools')
 p=root/'AndroidManifest.xml';tree=ET.parse(p);manifest=tree.getroot()

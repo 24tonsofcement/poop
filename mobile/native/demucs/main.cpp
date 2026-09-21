@@ -47,16 +47,17 @@ int main(int argc,char **argv) {
   const int stride=(int)((1-demucscpp::OVERLAP)*segment);
   std::srand(1);const int shift=(int)(demucscpp::MAX_SHIFT_SECS*44100)-std::rand()%(int)(demucscpp::MAX_SHIFT_SECS*44100);
   const int length=frames+shift;
+  std::filesystem::path folder(argv[3]);std::filesystem::create_directories(folder);
+  const char *names[]={"drums","bass","other","vocals","guitar","piano"};
+  std::array<std::ofstream,6> raw;std::array<float,6> peaks{};
+  for(int t=0;t<6;t++)raw[t].open(folder/(std::string(names[t])+".f32"),std::ios::binary);
+  {
   demucscpp::demucs_segment_buffers buffers(2,segment,6);
   demucscpp::stft_buffers fft(buffers.padded_segment_samples);
   Eigen::VectorXf weight(segment);weight.setZero();
   weight.head(segment/2)=Eigen::VectorXf::LinSpaced(segment/2,1,segment/2);
   weight.tail(segment/2)=weight.head(segment/2).reverse();weight/=weight.maxCoeff();weight=weight.array().pow(demucscpp::TRANSITION_POWER);
   Eigen::MatrixXf ring=Eigen::MatrixXf::Zero(12,segment);Eigen::VectorXf sums=Eigen::VectorXf::Zero(segment);
-  std::filesystem::path folder(argv[3]);std::filesystem::create_directories(folder);
-  const char *names[]={"drums","bass","other","vocals","guitar","piano"};
-  std::array<std::ofstream,6> raw;std::array<float,6> peaks{};
-  for(int t=0;t<6;t++)raw[t].open(folder/(std::string(names[t])+".f32"),std::ios::binary);
   for(int offset=0;offset<length;offset+=stride) {
    const int count=std::min(segment,length-offset),leftpad=(segment-count)/2;
    buffers.mix.setZero();int first=std::max(0,shift-offset),last=std::min(count,frames+shift-offset);
@@ -79,6 +80,7 @@ int main(int argc,char **argv) {
    sums.head(segment-flush)=sums.tail(segment-flush).eval();sums.tail(flush).setZero();
   }
   for(auto &w:raw){w.close();if(!w)throw std::runtime_error("Storage full while writing stems");}
+  } // Release segment work buffers before optional reference comparison.
   if(verify){
    f.clear();f.seekg(data_start);Eigen::MatrixXf audio(2,frames);
    for(int i=0;i<frames;i++)for(int c=0;c<2;c++)audio(c,i)=(int16_t)u16(f)/32768.f;
