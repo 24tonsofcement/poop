@@ -344,6 +344,10 @@ func install_mobile_pack(archive: String) -> String:
 		reader.close()
 		return "Invalid song metadata."
 	var song: Dictionary = metadata.data
+	for installed in songs:
+		if str(installed.get("id", "")) == str(song.get("id", "")):
+			reader.close()
+			return "This song is already downloaded. Delete it first to replace its chart."
 	var destination = song_root.path_join("mobile-" + str(song.id).sha256_text().left(24))
 	if DirAccess.dir_exists_absolute(destination):
 		reader.close()
