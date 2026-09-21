@@ -24,7 +24,13 @@ func _ready() -> void:
 	column.add_child(start_button)
 	# An interrupted trial update is discarded next launch.
 	if FileAccess.file_exists("user://update-trial"):
+		var rejected = FileAccess.open("user://rejected-version", FileAccess.WRITE)
+		if rejected and FileAccess.file_exists("user://update-version"):
+			rejected.store_string(FileAccess.get_file_as_string("user://update-version"))
+			rejected.close()
 		DirAccess.remove_absolute("user://update.pck")
+		if FileAccess.file_exists("user://update-old.pck"):
+			DirAccess.rename_absolute("user://update-old.pck", "user://update.pck")
 		DirAccess.remove_absolute("user://update-version")
 		DirAccess.remove_absolute("user://update-trial")
 	await check_update()
@@ -61,6 +67,7 @@ func check_update() -> void:
 	var manifest = parse(response[3])
 	if manifest.get("runtime") != RUNTIME: return
 	var version = str(manifest.get("version", ""))
+	if FileAccess.file_exists("user://rejected-version") and version == FileAccess.get_file_as_string("user://rejected-version"): return
 	if version.is_empty() or version == FileAccess.get_file_as_string("res://mobile/VERSION").strip_edges(): return
 	if FileAccess.file_exists("user://update-version") and version == FileAccess.get_file_as_string("user://update-version"): return
 	var url = str(manifest.get("url", ""))
@@ -94,11 +101,16 @@ func launch() -> void:
 		caption.text = "Update could not start. Close and reopen to recover."
 		return
 	var game = packed.instantiate()
+	if game == null or game.get_script() == null:
+		caption.text = "Update could not start. Close and reopen to recover."
+		return
 	get_tree().root.add_child(game)
 	get_tree().current_scene = game
 	# Mark healthy only after the game's ready and several frames complete.
 	await get_tree().process_frame
 	await get_tree().process_frame
+	if str(game.get("screen")) != "menu":
+		return
 	DirAccess.remove_absolute("user://update-trial")
 	DirAccess.remove_absolute("user://update-old.pck")
 	queue_free()

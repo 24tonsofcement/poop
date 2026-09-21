@@ -45,9 +45,9 @@ jobs:
       - name: Validate scripts and touch gameplay
         run: |
           python -m unittest discover -s mobile/tests -v
-          godot --headless --editor --path . --import 2>&1 | tee /tmp/import.log
+          timeout 120 godot --headless --editor --path . --import 2>&1 | tee /tmp/import.log
           if grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' /tmp/import.log; then exit 1; fi
-          godot --headless --path . --script res://mobile/smoke.gd 2>&1 | tee /tmp/smoke.log
+          timeout 90 godot --headless --path . --script res://mobile/smoke.gd 2>&1 | tee /tmp/smoke.log
           if grep -E 'SCRIPT ERROR|ERROR:|FAIL:' /tmp/smoke.log; then exit 1; fi
       - name: Export APK and content update
         run: |
