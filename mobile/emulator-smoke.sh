@@ -10,7 +10,7 @@ package=org.pulsefour.standalone
 adb install --no-incremental -r dist/PulseFour-Android.apk
 adb logcat -c
 adb shell am start -n "$package/com.godot.game.GodotApp" --ez pulse_native_test true
-for attempt in $(seq 1 30); do
+for attempt in $(seq 1 450); do
   if adb shell run-as "$package" test -f files/native-test-result; then break; fi
   sleep 2
 done

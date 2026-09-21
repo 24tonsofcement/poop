@@ -38,15 +38,30 @@ def evidence(charts,audio,stems):
             if not len(part):continue
             contour=np.array([float(v.mean()) if len(v) else 0 for v in np.array_split(part,32)])
             norm=float(np.linalg.norm(contour));unit=contour/max(norm,1e-10)
+            # Ordered chroma fingerprints distinguish different melodies with the same rhythm.
+            clip=samples[int(start*rate):min(len(samples),int((start+span)*rate))]
+            chroma=[]
+            freq=np.fft.rfftfreq(2048,1/rate)
+            valid=(freq>=65)&(freq<=4200)
+            pitch=np.mod(np.rint(69+12*np.log2(np.maximum(freq,1)/440)).astype(int),12)
+            for chunk in np.array_split(clip,16):
+                frame=np.zeros(2048,dtype=np.float32);take=chunk[:2048];frame[:len(take)]=take
+                spectrum=np.abs(np.fft.rfft(frame*np.hanning(2048)))
+                vector=np.bincount(pitch[valid],weights=spectrum[valid],minlength=12)
+                vector=vector/max(float(np.linalg.norm(vector)),1e-9)
+                chroma.append(vector)
+            chroma=np.asarray(chroma).reshape(-1)
+            chroma/=max(float(np.linalg.norm(chroma)),1e-9)
             family=None
             for tid,template in enumerate(templates):
-                if norm>1e-6 and float(np.dot(unit,template))>.94:family=tid;break
-            if family is None:family=len(templates);templates.append(unit)
+                if norm>1e-6 and float(np.dot(unit,template[0]))>.94 and float(np.dot(chroma,template[1]))>.90:family=tid;break
+            if family is None:family=len(templates);templates.append((unit,chroma))
             family_id=f'{instrument}:{family}'
             if family_id not in families:families.append(family_id)
             sections.append({'id':index,'family':family_id,'start':round(float(start),4),'end':round(min(float(start+span),len(samples)/rate),4),
                 'energy':round(float(np.mean(power[a:b]))/maximum,3),
                 'attack_contour':np.round(unit,3).tolist(),
+                'pitch_class_contour':np.argmax(chroma.reshape(16,12),axis=1).tolist(),
                 'difficulty_notes':{d:sum(start<=v['t']<start+span for v in notes) for d,notes in diffs.items()},
                 'supported_holds':sum(start<=v['t']<start+span and v['end']>v['t']+.08 for v in diffs.get('Expert',[]))})
         result[instrument]=sections

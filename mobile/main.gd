@@ -250,6 +250,10 @@ func show_mobile_library() -> void:
 	button_into(root, "Generate on this device", func():
 		if native_importer != null: native_importer.generate(link.text, song_root, ai_enabled)
 		else: message_phone("Install the standalone APK to use this feature."))
+	button_into(root, "Regenerate selected chart", func():
+		if native_importer != null and not selected.is_empty() and str(selected.get("category", "")) in ["YouTube", "SoundCloud"]:
+			native_importer.regenerate(str(selected.folder), song_root, ai_enabled)
+		else: message_phone("Select an imported online song first."))
 	var cards = box_into(root, true)
 	button_into(cards, "Import song cards", func():
 		if native_importer != null: native_importer.import_cards(song_root))

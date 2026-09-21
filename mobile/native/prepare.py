@@ -13,10 +13,10 @@ s=s.replace('dependencies {','''dependencies {
 s+='''
 chaquopy {
     defaultConfig {
-        version = '3.11'
+        version = '3.10'
         pip {
             install 'numpy'
-            install 'scipy'
+            install 'scipy==1.8.1'
             install 'Pillow'
         }
     }

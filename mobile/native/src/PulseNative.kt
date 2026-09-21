@@ -153,6 +153,7 @@ class PulseNative(godot: Godot): GodotPlugin(godot) {
         YoutubeDL.execute(request,"pulse-import") {p,_,_->progress("Downloading source media: ${p.toInt()}%",5.0)}
     }
     @UsedByGodot fun generate(source:String,root:String,ai:Boolean) {submit(JSONObject().put("kind","link").put("source",source).put("library",root).put("ai",ai))}
+    @UsedByGodot fun regenerate(folder:String,root:String,ai:Boolean) {submit(JSONObject().put("kind","regenerate").put("source",folder).put("library",root).put("ai",ai))}
     private fun submit(request:JSONObject,after:((Boolean)->Unit)?=null) {
         if(!busy.compareAndSet(false,true)){progress("An import is already running",0.0);return}
         cancelled.set(false);library=request.getString("library")

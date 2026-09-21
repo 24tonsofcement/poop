@@ -28,7 +28,7 @@ def run(request_json, bridge):
             else:
                 bridge.command(json.dumps(args))
     job = PhoneJob()
-    worker.binary = lambda name: '__yt-dlp' if name=='yt-dlp' else bridge.binary(name)
+    worker.binary = lambda name: '__yt-dlp' if name=='yt-dlp' else '__unused_deno' if name=='deno' else bridge.binary(name)
     def separate(audio, temp, job):
         separated = temp/'stems'
         output = separated/worker.MODEL/audio.stem
@@ -55,7 +55,7 @@ def run(request_json, bridge):
             decode(data)
             Path(request['destination']).write_bytes(data)
             return json.dumps({'message':'Card ready','paths':[],'warnings':[]})
-        elif kind=='link':
+        elif kind in ('link','regenerate'):
             if request.get('ai'):
                 from ai_charting import refine
                 original=worker.instrument_charts
@@ -74,12 +74,12 @@ def run(request_json, bridge):
                     pack['generator'] += ' + Claude evidence-constrained editor ('+bridge.get_model()+')'
                     return original_commit(work,library,pack)
                 worker.commit_pack=ai_commit
-                try: paths,warnings=worker.import_youtube(request['source'],library,temp,job)
+                try: paths,warnings=(worker.import_youtube if kind=='link' else worker.regenerate_song)(request['source'],library,temp,job)
                 finally:
                     worker.instrument_charts=original
                     worker.song_hype=original_hype
                     worker.commit_pack=original_commit
-            else: paths,warnings=worker.import_youtube(request['source'],library,temp,job)
+            else: paths,warnings=(worker.import_youtube if kind=='link' else worker.regenerate_song)(request['source'],library,temp,job)
         else: raise ValueError('Unsupported phone import')
     return json.dumps({'message':'Import complete','paths':paths,'warnings':warnings})
 
@@ -94,4 +94,22 @@ def self_test(bridge):
     assert decode(encode(b.getvalue(),p))['charts']==p['charts']
     assert scipy.signal.find_peaks(np.array([0.,1.,0.]))[0].tolist()==[1]
     bridge.command(json.dumps([bridge.binary('ffmpeg'),'-version']))
-    return 'Python, SciPy, PNG cards and FFmpeg passed'
+    import wave
+    with tempfile.TemporaryDirectory() as tmp:
+        folder=Path(tmp);audio=folder/'probe.wav';rate=44100
+        t=np.arange(rate*8)/rate
+        envelope=np.maximum(0,1-(t%0.25)/.12)
+        signal=.2*np.sin(2*np.pi*220*t)*envelope+.08*np.sin(2*np.pi*440*t)
+        pcm=np.repeat((signal*32767).astype('<i2')[:,None],2,axis=1)
+        with wave.open(str(audio),'wb') as wav:
+            wav.setnchannels(2);wav.setsampwidth(2);wav.setframerate(rate);wav.writeframes(pcm.tobytes())
+        target=folder/'stems'
+        bridge.command(json.dumps([bridge.binary('demucs'),bridge.modelPath(),str(audio),str(target),'--verify']))
+        for source in worker.SOURCES:
+            with wave.open(str(target/(source+'.wav'))) as wav:
+                assert wav.getnframes()==rate*8 and wav.getnchannels()==2
+        charts=worker.generate_charts(audio,allow_holds=True,instrument='piano')
+        assert len(charts)==6 and any(charts.values())
+        from song_card import render_card
+        decode(encode(render_card(b.getvalue(),'Android song card'),p))
+    return 'Python, SciPy, six-stem streaming/reference parity, six difficulties, PNG cards and FFmpeg passed'
