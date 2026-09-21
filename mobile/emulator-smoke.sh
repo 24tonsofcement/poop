@@ -8,11 +8,12 @@ capture() {
 trap capture EXIT
 package=org.pulsefour.standalone
 adb install --no-incremental -r dist/PulseFour-Android.apk
+adb shell settings put secure immersive_mode_confirmations confirmed
 adb logcat -c
 adb shell am start -n "$package/com.godot.game.GodotApp" --ez pulse_native_test true
 for attempt in $(seq 1 450); do
   if adb shell run-as "$package" test -f files/native-test-result; then break; fi
-  if ! adb shell pidof "$package" >/dev/null; then echo "Android process exited during native validation"; exit 1; fi
+  if [ "$attempt" -gt 15 ] && ! adb shell pidof "$package" >/dev/null; then echo "Android process exited during native validation"; exit 1; fi
   sleep 2
 done
 adb shell run-as "$package" cat files/native-test-result | tee dist/native-test-result.txt
