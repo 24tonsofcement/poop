@@ -17,6 +17,7 @@ done
 mkdir -p android/build/assets
 curl --fail --retry 3 -L -o android/build/assets/htdemucs-6s-f16.bin \
  https://huggingface.co/datasets/Retrobear/demucs.cpp/resolve/main/ggml-model-htdemucs-6s-f16.bin
+echo '09704f4ceae204e56e77d5eefd6ac71d7275be81fd507e6913371d59abcee856  android/build/assets/htdemucs-6s-f16.bin' | sha256sum --check
 # Fail rather than package an HTML error or an incomplete model.
 test "$(stat -c%s android/build/assets/htdemucs-6s-f16.bin)" -gt 40000000
 mkdir -p android/build/assets/licenses

@@ -36,7 +36,7 @@ int main(int argc,char **argv) {
   for(int t=0;t<6;t++) {
    std::ofstream w(std::filesystem::path(argv[3])/(std::string(names[t])+".wav"),std::ios::binary);
    w.write("RIFF",4);write32(w,36+bytes);w.write("WAVEfmt ",8);write32(w,16);write16(w,1);write16(w,2);write32(w,44100);write32(w,176400);write16(w,4);write16(w,16);w.write("data",4);write32(w,bytes);
-   for(size_t i=0;i<frames;i++)for(int c=0;c<2;c++)write16(w,(int16_t)(std::clamp(out(t,c,i),-1.f,.999969f)*32768));
+   for(size_t i=0;i<frames;i++)for(int c=0;c<2;c++)write16(w,(int16_t)(std::clamp(out(t,c,static_cast<Eigen::Index>(i)),-1.f,.999969f)*32768));
    if(!w)throw std::runtime_error("Cannot write stem");
   }
   return 0;
