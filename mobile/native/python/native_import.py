@@ -94,6 +94,7 @@ def run(request_json, bridge):
 
 
 def self_test(bridge):
+    assert bridge.downloaderProbe()
     import numpy as np
     import scipy.signal
     from PIL import Image
@@ -115,7 +116,18 @@ def self_test(bridge):
         video=folder/'probe.ogv'
         bridge.command(json.dumps([bridge.binary('ffmpeg'),'-nostdin','-y','-f','lavfi','-i','color=c=blue:s=64x64:d=0.3','-an','-c:v','libtheora',str(video)]))
         assert video.stat().st_size>100
-        target=folder/'stems'
+        # Real downloader execution AFTER Chaquopy starts, including metadata output.
+        import http.server,threading,functools
+        handler=functools.partial(http.server.SimpleHTTPRequestHandler,directory=str(folder))
+        server=http.server.ThreadingHTTPServer(('127.0.0.1',0),handler)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            fetched=folder/'downloaded.wav'
+            bridge.download(json.dumps(['--ignore-config','--no-playlist','--force-generic-extractor','--write-info-json','-o',str(fetched),'http://127.0.0.1:'+str(server.server_port)+'/probe.wav']))
+            assert fetched.read_bytes()==audio.read_bytes()
+            assert (folder/'downloaded.info.json').exists()
+        finally:server.shutdown();server.server_close();thread.join()
+        target=folder/'stems' 
         bridge.command(json.dumps([bridge.binary('demucs'),bridge.modelPath(),str(audio),str(target),'--verify']))
         for source in worker.SOURCES:
             with wave.open(str(target/(source+'.wav'))) as wav:

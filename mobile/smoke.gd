@@ -16,6 +16,7 @@ func run() -> void:
 	game.start_game()
 	await process_frame
 	check(game.screen == "game", "demo playable")
+	check(game.highway_top() <= 100 and game.highway_hit() - game.highway_top() > game.size.y * 0.65, "mobile highway uses screen height")
 	if game.runs.is_empty():
 		quit(1)
 		return

@@ -1,3 +1,5 @@
+Android 0.2.1 repair: isolated downloader Python, taller mobile highway, and upgrade preservation tests. Install this APK over the existing standalone app; do not uninstall it. Same signing identity and package preserve settings, API key, songs and scores.
+
 Standalone Android edition — separate from PC and the old companion-only app.
 
 Download **PulseFour-Android.apk**. Android 8.0+, ARM64 or x86-64.

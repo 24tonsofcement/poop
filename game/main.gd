@@ -1818,6 +1818,18 @@ func show_leaderboard() -> void:
 	button_into(root, "Song library", show_menu)
 	queue_redraw()
 
+func highway_top() -> float:
+	return 170.0
+
+func highway_hit() -> float:
+	return size.y - 115.0
+
+func draw_player_hud(r: Dictionary, p: int, x: float, track_w: float) -> void:
+	text_at(Vector2(x, 101), "%s  /  %s" % [r.profile, choices[p].instrument], 19, COLORS[p], track_w)
+	var acc: float = 100.0 * float(r.raw_score) / maxf(300, float(r.judged) * 300) if r.judged > 0 else 100.0
+	text_at(Vector2(x, 127), "%s · %.1f%%" % [choices[p].difficulty, acc], 15, MUTED, track_w)
+	text_at(Vector2(x, 153), "%06d   %d streak   %d×" % [r.score, r.combo, r.multiplier], 17 if players_count >= 3 else 21, WHITE)
+
 func _draw() -> void:
 	draw_set_transform(hype_shake())
 	draw_arcade_backdrop()
@@ -1833,18 +1845,15 @@ func _draw() -> void:
 	var track_w: float = (w - 88 - (players_count - 1) * 18) / players_count
 	var start_x: float = (w - (track_w * players_count + 18 * (players_count - 1))) / 2
 	draw_song_visualizer(start_x)
-	var top: float = 170
-	var hit: float = h - 115
+	var top: float = highway_top()
+	var hit: float = highway_hit()
 	var pixels: float = scroll_speed
 	var visible_seconds: float = (hit - top) / scroll_speed
 	for p in range(players_count):
 		var x: float = start_x + p * (track_w + 18)
 		var lane_w: float = track_w / 4
 		var r: Dictionary = runs[p]
-		text_at(Vector2(x, 101), "%s  /  %s" % [r.profile, choices[p].instrument], 19, COLORS[p], track_w)
-		var acc: float = 100.0 * float(r.raw_score) / maxf(300, float(r.judged) * 300) if r.judged > 0 else 100.0
-		text_at(Vector2(x, 127), "%s · %.1f%%" % [choices[p].difficulty, acc], 15, MUTED, track_w)
-		text_at(Vector2(x, 153), "%06d   %d streak   %d×" % [r.score, r.combo, r.multiplier], 17 if players_count >= 3 else 21, WHITE)
+		draw_player_hud(r, p, x, track_w)
 		road_quad(x, track_w, top, hit, 0, 4, top, hit + 12, Color(Color("171b1c"), highway_opacity))
 		draw_hype(r, x, track_w, top, hit, COLORS[p])
 		if visual_effects.combo_glow and r.multiplier > 1:

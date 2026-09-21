@@ -36,6 +36,7 @@ jobs:
           assert meta['certificate_sha256'].lower() in Path('release/signature.txt').read_text().lower()
           PY
           cp base/PulseFour-Android.pck base/android-update.json release/
+          gh release download android-standalone --pattern PulseFour-Android.apk --output release/previous.apk
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -55,7 +56,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swangle -no-snapshot -noaudio -no-boot-anim
           script: |
-            adb install --no-incremental -r release/PulseFour-Android.apk
+            bash mobile/publish-apk/upgrade-smoke.sh
             adb shell settings put secure immersive_mode_confirmations confirmed
             adb logcat -c
             adb shell monkey -p org.pulsefour.standalone -c android.intent.category.LAUNCHER 1

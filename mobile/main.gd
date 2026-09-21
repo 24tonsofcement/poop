@@ -148,7 +148,7 @@ func release_finger(index: int) -> void:
 func _input(event: InputEvent) -> void:
 	if screen == "game" and not paused:
 		if event is InputEventScreenTouch:
-			if event.pressed and event.position.y >= 85:
+			if event.pressed and event.position.y >= highway_top():
 				var lane = lane_at(event.position)
 				var already = fingers.values().has(lane)
 				fingers[event.index] = lane
@@ -175,6 +175,17 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		for index in fingers.keys(): release_finger(int(index))
 	super._notification(what)
+
+func highway_top() -> float:
+	return 94.0
+
+func highway_hit() -> float:
+	return size.y - 85.0
+
+func draw_player_hud(r: Dictionary, _p: int, x: float, track_w: float) -> void:
+	var acc: float = 100.0 * float(r.raw_score) / maxf(300, float(r.judged) * 300) if r.judged > 0 else 100.0
+	text_at(Vector2(x, 85), "%s · %s · %s" % [r.profile, choices[0].instrument, choices[0].difficulty], 16, COLORS[0], track_w * 0.48)
+	text_at(Vector2(x + track_w * 0.5, 85), "%06d   %d streak   %d×   %.1f%%" % [r.score, r.combo, r.multiplier, acc], 16, WHITE, track_w * 0.5)
 
 func _draw() -> void:
 	super._draw()

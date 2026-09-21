@@ -50,6 +50,23 @@ class PulseNative(godot: Godot): GodotPlugin(godot) {
                 } catch(e:Exception){File(context.filesDir,"native-test-result").writeText("FAIL: ${e.javaClass.simpleName}: ${e.message}")}
             }
         }
+        val probe=activity.intent.getStringExtra("pulse_update_probe")
+        if(probe=="seed"||probe=="check")executor.execute {
+            val result=File(context.filesDir,"update-probe-result")
+            try {
+                val probePrefs=context.getSharedPreferences("update_probe",Context.MODE_PRIVATE)
+                val cipher=Cipher.getInstance("AES/GCM/NoPadding")
+                if(probe=="seed") {
+                    cipher.init(Cipher.ENCRYPT_MODE,key("pulse-update-probe"))
+                    check(probePrefs.edit().putString("iv",Base64.encodeToString(cipher.iv,Base64.NO_WRAP))
+                        .putString("encrypted",Base64.encodeToString(cipher.doFinal("update-preserves-encrypted-settings".toByteArray()),Base64.NO_WRAP)).commit())
+                }else{
+                    cipher.init(Cipher.DECRYPT_MODE,key("pulse-update-probe"),GCMParameterSpec(128,Base64.decode(probePrefs.getString("iv","")!!,Base64.NO_WRAP)))
+                    check(String(cipher.doFinal(Base64.decode(probePrefs.getString("encrypted","")!!,Base64.NO_WRAP)))=="update-preserves-encrypted-settings")
+                }
+                result.writeText("PASS: encrypted preferences and Android Keystore "+probe)
+            }catch(e:Exception){result.writeText("FAIL: "+e.javaClass.simpleName)}
+        }
         return null
     }
     @UsedByGodot fun get_status() = status
@@ -71,11 +88,11 @@ class PulseNative(godot: Godot): GodotPlugin(godot) {
                 }.show()
         }
     }
-    private fun key(): SecretKey {
+    private fun key(alias:String = "pulse-anthropic"): SecretKey {
         val store=KeyStore.getInstance("AndroidKeyStore");store.load(null)
-        (store.getKey("pulse-anthropic",null) as? SecretKey)?.let{return it}
+        (store.getKey(alias,null) as? SecretKey)?.let{return it}
         val generator=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore")
-        generator.init(KeyGenParameterSpec.Builder("pulse-anthropic",KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+        generator.init(KeyGenParameterSpec.Builder(alias,KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
         return generator.generateKey()
     }
@@ -145,15 +162,49 @@ class PulseNative(godot: Godot): GodotPlugin(godot) {
             if(child.waitFor()!=0)throw IllegalStateException(if(cancelled.get())"Import cancelled" else "Audio tool failed: ${tail.takeLast(1600)}")
         }finally{child.destroy();process=null}
     }
+    // Never inherit Chaquopy's PYTHONPATH into the separate downloader interpreter.
+    private fun downloaderProcess(arguments:List<String>, pythonCode:Boolean=false):String {
+        val runtime=File(context.noBackupFilesDir,"youtubedl-android/packages/python/usr")
+        val bin=File(context.applicationInfo.nativeLibraryDir)
+        val command=mutableListOf(File(bin,"libpython.so").path)
+        if(!pythonCode)command.add(File(context.noBackupFilesDir,"youtubedl-android/yt-dlp/yt-dlp").path)
+        if(!pythonCode)command.addAll(listOf("--no-cache-dir","--js-runtimes","quickjs:"+File(bin,"libqjs.so").path,"--ffmpeg-location",binary("ffmpeg")))
+        command.addAll(arguments)
+        val builder=ProcessBuilder(command).redirectErrorStream(true)
+        val env=builder.environment()
+        env.keys.filter{it.startsWith("PYTHON")}.toList().forEach{env.remove(it)}
+        env["PYTHONHOME"]=runtime.path
+        env["PYTHONNOUSERSITE"]="1"
+        env["HOME"]=runtime.path
+        env["TMPDIR"]=context.cacheDir.path
+        env["SSL_CERT_FILE"]=File(runtime,"etc/tls/cert.pem").path
+        env["LD_LIBRARY_PATH"]=File(runtime,"lib").path+":"+File(context.noBackupFilesDir,"youtubedl-android/packages/ffmpeg/usr/lib").path+":"+bin.path
+        env["PATH"]=(System.getenv("PATH")?:"/system/bin")+":"+bin.path
+        if(cancelled.get())throw IllegalStateException("Import cancelled")
+        val child=builder.start();process=child
+        val tail=StringBuilder()
+        try {
+            child.inputStream.bufferedReader().useLines{lines->lines.forEach{line->
+                tail.append(line).append('\n');if(tail.length>16000)tail.delete(0,tail.length-12000)
+                if(line.startsWith("[download]"))progress(line.take(160),5.0)
+                if(cancelled.get())child.destroy()
+            }}
+            if(child.waitFor()!=0) {
+                File(context.cacheDir,"last-download-error.txt").writeText(tail.toString())
+                throw IllegalStateException(if(cancelled.get())"Import cancelled" else "Download failed: "+tail.lines().filter{it.isNotBlank()}.takeLast(3).joinToString(" ").take(450))
+            }
+            return tail.toString()
+        }finally{child.destroy();process=null}
+    }
+    fun downloaderProbe():String {
+        val config=downloaderProcess(listOf("-c","import sys,json,ssl,encodings; print(json.dumps({'paths':sys.path,'version':sys.version}))"),true)
+        check(!config.contains("chaquopy")){"Downloader inherited chart-engine paths"}
+        check(downloaderProcess(listOf("--version")).trim().isNotEmpty())
+        return "Downloader starts independently of chart Python"
+    }
     fun download(raw:String) {
-        val array=JSONArray(raw);val args=(0 until array.length()).map{array.getString(it)}
-        val url=args.last();val request=YoutubeDLRequest(url)
-        var i=0
-        val valued=setOf("--socket-timeout","--retries","--match-filter","--max-filesize","-f","-o")
-        while(i<args.size-1){val option=args[i++];if(option=="--")continue
-            if(option in valued)request.addOption(option,args[i++]) else request.addOption(option)
-        }
-        YoutubeDL.execute(request,"pulse-import") {p,_,_->progress("Downloading source media: ${p.toInt()}%",5.0)}
+        val array=JSONArray(raw)
+        downloaderProcess((0 until array.length()).map{array.getString(it)})
     }
     @UsedByGodot fun generate(source:String,root:String,ai:Boolean) {submit(JSONObject().put("kind","link").put("source",source).put("library",root).put("ai",ai))}
     @UsedByGodot fun regenerate(folder:String,root:String,ai:Boolean) {submit(JSONObject().put("kind","regenerate").put("source",folder).put("library",root).put("ai",ai))}

@@ -1,13 +1,21 @@
 extends Control
 # This scene intentionally has no game-script preloads: mount updates first.
 const RELEASE_API = "https://api.github.com/repos/24tonsofcement/poop/releases/tags/android-standalone"
-const RUNTIME = "godot-4.4.1-android-2"
+const RUNTIME = "godot-4.4.1-android-3"
 var caption: Label
 var start_button: Button
 var started: bool = false
 var pending: bool = false
 
 func _ready() -> void:
+	# A new native APK supersedes cached content, never user settings or songs.
+	var bundled_version: String = FileAccess.get_file_as_string("res://mobile/VERSION").strip_edges()
+	var installed_version: String = FileAccess.get_file_as_string("user://installed-apk-version") if FileAccess.file_exists("user://installed-apk-version") else ""
+	if bundled_version != installed_version:
+		for cache_name in ["update.pck", "update-old.pck", "update-download.pck", "update-version", "update-trial", "rejected-version"]:
+			DirAccess.remove_absolute("user://" + cache_name)
+		var installed = FileAccess.open("user://installed-apk-version", FileAccess.WRITE)
+		if installed: installed.store_string(bundled_version); installed.close()
 	var center = CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
