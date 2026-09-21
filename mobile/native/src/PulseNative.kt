@@ -132,7 +132,7 @@ class PulseNative(godot: Godot): GodotPlugin(godot) {
         val array=JSONArray(raw);val args=(0 until array.length()).map{array.getString(it)}
         require(args.first()==binary("ffmpeg")||args.first()==binary("demucs"))
         val builder=ProcessBuilder(args).redirectErrorStream(true)
-        builder.environment()["LD_LIBRARY_PATH"]=File(context.noBackupFilesDir,"youtubedl-android/packages/ffmpeg/usr/lib").path+":"+context.applicationInfo.nativeLibraryDir
+        builder.environment()["LD_LIBRARY_PATH"]=File(context.noBackupFilesDir,"youtubedl-android/packages/python/usr/lib").path+":"+File(context.noBackupFilesDir,"youtubedl-android/packages/ffmpeg/usr/lib").path+":"+context.applicationInfo.nativeLibraryDir
         builder.environment()["OMP_NUM_THREADS"]="2"
         val child=builder.start();process=child
         val tail=StringBuilder()

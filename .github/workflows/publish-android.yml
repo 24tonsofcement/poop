@@ -1,0 +1,46 @@
+name: Publish locally signed Android APK
+on:
+  push:
+    branches: [android]
+    paths: ['mobile/publish-apk/release.b64', 'mobile/publish-apk/release.json']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/android'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Retrieve tested build and reconstruct public signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(python -c "import json; print(int(json.load(open('mobile/publish-apk/release.json'))['source_run']))")
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$run_id --jq .conclusion)" = success
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$run_id --jq .head_branch)" = android
+          gh run download "$run_id" --name PulseFour-Android --dir base
+          mkdir -p release
+          python mobile/publish-apk/signature_patch.py apply base/PulseFour-Android.apk mobile/publish-apk/release.b64 release/PulseFour-Android.apk
+          java -jar base/apksigner.jar verify --verbose --print-certs release/PulseFour-Android.apk > release/signature.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          meta=json.loads(Path('mobile/publish-apk/release.json').read_text())
+          assert meta['certificate_sha256'].lower() in Path('release/signature.txt').read_text().lower()
+          PY
+          cp base/PulseFour-Android.pck base/android-update.json release/
+      - name: Publish standalone Android channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source_commit=$(python -c "import json; print(json.load(open('mobile/publish-apk/release.json'))['source_commit'])")
+          if ! gh release view android-standalone >/dev/null 2>&1; then
+            gh release create android-standalone --target "$source_commit" --prerelease --title 'Standalone Android' --notes-file mobile/RELEASE.md
+          fi
+          gh release upload android-standalone release/PulseFour-Android.apk release/PulseFour-Android.pck release/android-update.json --clobber
+          gh release edit android-standalone --prerelease --notes-file mobile/RELEASE.md

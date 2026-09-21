@@ -1,31 +1,51 @@
-# Android branch
+# Standalone Android edition
 
-This branch does not change the Windows/main release. Android releases are prereleases named `android-channel`, so the desktop updater never selects them.
+Work is isolated on the `android` branch. The PC `main` branch is unchanged.
 
-## Install and play
+Install the standalone APK on a 64-bit Android 8.0+ device. It includes the
+six-stem model, media downloader, audio/video tools, Python analysis runtime,
+and the game. No computer companion or separately installed tools are needed.
+YouTube/SoundCloud imports and Claude requests require internet. Installed
+songs play offline. Native source separation is CPU intensive and may take
+considerably longer than the song on some phones.
 
-Download PulseFour-Android.apk from the Android early-access release, allow installation from your browser/file manager, and open it. The included demo works offline. Play landscape: each quarter of the screen is one touch lane. Multiple fingers can hold independent lanes; fingers remain on their original lane until lifted. The top-right pause button and Android Back pause local play. Online rounds cannot pause.
+## Songs and cards
 
-Settings include note speed, input calibration, audio, effects, hype, video brightness and highway opacity. One player per phone. Existing manual LAN/internet lobbies support song downloads; use a reachable server address rather than localhost. A phone can create a room on a running server but does not run the desktop server executable.
+Open **Songs**, paste a YouTube or SoundCloud link, and choose **Generate on
+this device**. Ordinary generation requires no API key. **Regenerate selected
+chart** reuses its existing audio. Card imports preserve the shared chart and
+retrieve its referenced media. **Import song cards** accepts multiple original
+PNGs; **Export selected card** uses the song title as its filename. Android's
+file picker remembers separate import/export locations. Send cards as files,
+not compressed messenger photos. Installed songs can be removed in Songs.
 
-## Add your songs
+## Optional Claude assistance
 
-Run the companion on the computer that has your existing imported song library. No desktop game files are modified:
+In **Settings > Songs & AI**, enter a fresh API key, refresh available models,
+and choose an exact model your account supports. Then enable **Claude-assisted
+charts** in Songs. API usage is billed to that key. Keys are encrypted using
+Android Keystore and are never bundled, logged, sent in prompts or included
+in exported cards. The exposed key from the conversation must be revoked.
 
-```
-python mobile/companion.py --songs "C:\Users\YOURNAME\AppData\Roaming\Godot\app_userdata\Pulse Four\songs" --worker "C:\path\to\PulseFour\importer\PulseImporter.exe"
-```
+The editor uses measured per-instrument rhythms, pitch contours, recurring
+phrases, sustain evidence, hype candidates and aggregate measurements from
+the supplied 169-chart mania study. It preserves supported timing and validates
+playability. This is evidence-grounded assistance, not direct audio input to
+Claude or a trained charting model. Human playtesting is still needed to judge
+musical quality. See [native implementation notes](native/README.md).
 
-Use your actual library/importer paths. The computer prints an access token. In phone Settings > Songs, enter `http://COMPUTER_LAN_IP:27441` and that token. Both devices must be on the same network, and the computer firewall must allow this port on the private network. Do not expose this plain-HTTP service to the public internet. A reverse proxy with HTTPS is needed for remote use.
+## Updates and installation identity
 
-Browse companion songs and download them for offline play, including chart, audio, artwork and video. You can also submit YouTube/SoundCloud URLs; generation runs on the computer and can take several minutes. The installed desktop importer supplies dependencies. Without `--worker`, install the Python importer dependencies and FFmpeg/yt-dlp/Deno on the computer. Existing downloaded song packs and the bundled demo need no running companion.
+The new package is `org.pulsefour.standalone`, isolated from the previous
+companion-only APK. Game-content updates use the separate `android-standalone`
+prerelease channel, with SHA-256 verification, staged installation and startup
+rollback. Scores, settings and songs are stored separately from updates.
+Native libraries and bundled Python changes require an APK update signed with
+the same private identity; Android requires installation confirmation. Do not
+uninstall the standalone app to update it, because uninstalling removes its
+private songs and scores.
 
-PNG card import/export and direct phone-based Demucs generation are not included yet. Import cards on the computer, then download the resulting song from the companion. The song library provides deletion without deleting personal records.
-
-## Updates
-
-The base APK uses Godot 4.4.1. Its boot scene checks only `android-channel`, downloads the PCK over HTTPS, verifies SHA-256, and mounts it before loading game scripts. Downloads stage separately; failed/offline checks use the installed content. A trial marker discards a failed startup bundle next launch. Only one installed content bundle is retained after successful startup. Songs/settings/scores live separately in private app storage.
-
-The CI retains the first APK rather than replacing it with a differently signed build. Future updates normally replace the PCK, not the APK. Android itself still requires confirmation for an eventual native APK upgrade; content updates cannot upgrade the engine or permissions. Uninstalling the app deletes private data.
-
-CI validates GDScript imports, multi-touch state, demo startup, mobile settings, and companion library path handling, then exports an APK for ARM64, ARMv7 and x86_64. Automated headless checks do not replace physical-device testing.
+The published APK is signed locally. Public signature patches let CI publish
+the tested APK without receiving the private signing key. PC releases and the
+old Android channel are not replaced. The original computer-companion utility
+remains in source for legacy installations but is unnecessary for this edition.

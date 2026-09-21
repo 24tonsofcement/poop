@@ -1,9 +1,19 @@
-Android early access, isolated from the Windows release channel.
+Standalone Android edition — separate from PC and the old companion-only app.
 
-Install **PulseFour-Android.apk** once. Subsequent game-content updates download at launch; use Play now to skip checks when offline. Songs, settings and scores remain in app storage. Native engine changes may eventually require installing a newer APK.
+Download **PulseFour-Android.apk**. Android 8.0+, ARM64 or x86-64.
 
-Landscape phone UI, four-finger touch chords/holds, bundled offline demo, existing scoring/grades/hype/effects/calibration, personal records, multiplayer using an existing lobby server, downloadable offline song packs.
+- On-device six-stem song separation and all six chart difficulties.
+- YouTube/SoundCloud imports with no computer companion.
+- Optional Claude-assisted phrase arrangements and evidence-checked hype sections.
+- Private on-device API-key entry and available-model selection.
+- PNG song-card import/export with original chart preservation and media retrieval.
+- Touch chords/holds, carousel, preview, scoring, grades, effects and saved records.
+- Automatic game-content updates through this separate Android channel.
 
-**Song generation requires the optional computer companion.** Demucs, FFmpeg and the YouTube/SoundCloud importer do not run on the phone. See `mobile/README.md` on the `android` branch. PNG card import/export remains a desktop feature for this early access build.
+The bundled model makes this a larger download. Song analysis is CPU intensive;
+processing time and thermal performance vary by phone. Claude requires internet
+and API credit. Offline and emulator checks do not certify human-level chart
+quality or replace physical-device playtesting. Native APK updates need Android's
+installation confirmation; regular content updates do not need reinstallation.
 
-This is a debug-signed sideload build, not a Play Store release. Physical-device compatibility and Bluetooth latency vary. The base APK is retained to preserve its signing identity; newer game code arrives through the separate Android content channel.
+The signing key is retained privately and is not part of GitHub or the APK.
