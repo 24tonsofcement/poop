@@ -75,6 +75,7 @@ Run $VenvPython @('-m','unittest','discover','-s','tests','-p','test_*.py','-v')
 RunGodot $Godot @('--headless','--path',$PSScriptRoot,'--editor','--import')
 RunGodot $Godot @('--headless','--path',$PSScriptRoot,'--script','tests/smoke.gd','--quit-after','600')
 RunGodot $Godot @('--headless','--path',$PSScriptRoot,'--script','tests/ui_smoke.gd','--quit-after','1200')
+RunGodot $Godot @('--headless','--path',$PSScriptRoot,'--script','tests/laser_smoke.gd','--quit-after','1200')
 RunGodot $Godot @('--headless','--path',$PSScriptRoot,'--export-release','Windows Desktop',(Join-Path $Release 'PulseFour.exe'))
 Run $VenvPython @('-m','PyInstaller','--noconfirm','--clean','--onedir','--console','--name','PulseImporter',
     '--distpath',(Join-Path $Build 'frozen'),'--workpath',(Join-Path $Build 'pyinstaller'),'--specpath',$Build,
@@ -138,3 +139,4 @@ if (Test-Path $Zip) { Remove-Item $Zip }
 # Python ZipFile supports bundles larger than Compress-Archive's limits.
 Run $VenvPython @('scripts/finish_repair.py','zip',$Release,$Zip)
 Write-Host "Built: $Zip"
+

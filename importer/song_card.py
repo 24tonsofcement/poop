@@ -70,7 +70,10 @@ def validate(pack):
         for section in sections:
             if not isinstance(section, dict) or not all(number(section.get(k)) for k in ['start', 'end', 'confidence']) or not 0 <= section['start'] < section['end'] <= duration + 5:
                 raise ValueError('Invalid hype section.')
-    keep = ['schema', 'title', 'artist', 'duration', 'charts', 'timing', 'hype', 'generator', 'credits']
+    if 'laser_charts' in pack:
+        from laser_charting import validate as validate_laser
+        validate_laser(pack['laser_charts'],duration)
+    keep = ['mode', 'laser_charts', 'schema', 'title', 'artist', 'duration', 'charts', 'timing', 'hype', 'generator', 'credits']
     result = {key: copy.deepcopy(pack[key]) for key in keep if key in pack}
     result.update(category=category, source=source, audio='audio.wav')
     result.setdefault('title', 'YouTube song')
@@ -174,3 +177,4 @@ def render_card(thumbnail, title):
     output = io.BytesIO()
     canvas.save(output, format='PNG')
     return output.getvalue()
+

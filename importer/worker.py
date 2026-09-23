@@ -30,6 +30,7 @@ BASE = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__
 TOOLS = BASE / 'tools'
 os.environ['PATH'] = str(TOOLS) + os.pathsep + os.environ.get('PATH', '')
 os.environ.setdefault('TORCH_HOME', str(BASE / 'models'))
+ACTIVE_MODE = 'arcade'
 MAX_SECONDS = 15 * 60
 MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
 
@@ -175,6 +176,9 @@ def existing_pack(library, identity):
 
 
 def commit_pack(work, library, pack):
+    if ACTIVE_MODE == 'laser':
+        from laser_charting import attach
+        attach(work / 'audio.wav', pack)
     existing = existing_pack(library, pack['id'])
     if existing is not None: return existing
     atomic_json(work / 'song.json', pack)
@@ -252,6 +256,9 @@ def separate_stems(audio_path, temp, job):
     return separated
 
 def instrument_charts(audio_path, temp, job):
+    if ACTIVE_MODE == 'laser':
+        job.update('Measuring full-song button, FX and laser patterns…', 60)
+        return {'Full mix': generate_charts(audio_path, instrument='mixed')}
     separated = separate_stems(audio_path, temp, job)
     charts = {}
     parts = selected_paths(audio_path, separated / MODEL / audio_path.stem)
@@ -486,6 +493,10 @@ def regenerate_song(source, library, temp, job):
     if not audio_path.is_file():
         raise ValueError('Cached audio is missing')
     pack['charts'] = instrument_charts(audio_path, temp, job)
+    if ACTIVE_MODE == 'laser':
+        from laser_charting import attach
+        pack.pop('laser_charts',None)
+        attach(audio_path,pack)
     pack['timing'] = estimate_timing(audio_path)
     pack['hype'] = song_hype(audio_path, temp, job, pack.get('charts'))
     pack['generator'] = 'htdemucs_6s + adaptive instruments + evidence-based sustains v10'
@@ -526,6 +537,9 @@ def main():
     parser.add_argument('--request', required=True)
     args = parser.parse_args()
     request = json.loads(Path(args.request).read_text(encoding='utf-8'))
+    global ACTIVE_MODE
+    ACTIVE_MODE = request.get('mode', 'arcade')
+    if ACTIVE_MODE not in ('arcade','laser'):raise ValueError('Invalid game mode')
     job = Job(request['result'])
     try:
         library = Path(request['library']).resolve()
@@ -575,3 +589,4 @@ if __name__ == '__main__':
     import multiprocessing
     multiprocessing.freeze_support()
     main()
+

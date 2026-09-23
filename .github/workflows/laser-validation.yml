@@ -1,0 +1,39 @@
+name: Validate PC laser mode
+on:
+  push:
+    branches: [main, codex/pc-laser-mode]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy==1.26.4 scipy==1.13.1 Pillow==11.1.0
+      - name: Install Godot
+        run: |
+          curl --fail -L https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip -o /tmp/godot.zip
+          unzip /tmp/godot.zip -d /tmp
+          mv /tmp/Godot_v4.4.1-stable_linux.x86_64 /tmp/godot
+      - name: Validate charts and gameplay
+        run: |
+          python scripts/make_demo.py --audio-only
+          python -m unittest discover -s tests -p 'test_laser.py' -v
+          /tmp/godot --headless --editor --path . --import 2>&1 | tee /tmp/import.log
+          ! grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' /tmp/import.log
+          /tmp/godot --headless --path . --script tests/laser_smoke.gd 2>&1 | tee /tmp/laser.log
+          ! grep -E 'SCRIPT ERROR|ERROR:' /tmp/laser.log
+      - name: Capture PC interface
+        run: xvfb-run -a /tmp/godot --path . --audio-driver Dummy --script tests/laser_capture.gd
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PC-laser-validation
+          path: |
+            /tmp/godot
+            /tmp/import.log
+            /tmp/laser.log
+            /tmp/laser-*.png

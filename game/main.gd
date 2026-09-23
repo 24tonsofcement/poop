@@ -131,8 +131,16 @@ func _ready() -> void:
 		audio.stop()
 		stop_background_video()
 		show_online_menu())
+	var navigation = CanvasLayer.new()
+	navigation.layer = 50
+	add_child(navigation)
+	var modes = Button.new()
+	modes.text = "◀ MODES"
+	modes.position = Vector2(8, 8)
+	modes.pressed.connect(return_to_modes)
+	navigation.add_child(modes)
 	font = ThemeDB.fallback_font
-	song_root = ProjectSettings.globalize_path("user://songs")
+	song_root = library_root()
 	DirAccess.make_dir_recursive_absolute(song_root)
 	audio = AudioStreamPlayer.new()
 	add_child(audio)
@@ -287,6 +295,19 @@ func valid_song(data) -> bool:
 				last = at
 			count += notes.size()
 	return count > 0
+
+func library_root() -> String:
+	return ProjectSettings.globalize_path("user://songs")
+
+func mode_name() -> String:
+	return "arcade"
+
+func return_to_modes() -> void:
+	if worker_pid > 0: cancel_import()
+	if online.connected(): online.leave()
+	save_settings()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	get_tree().change_scene_to_file("res://game/mode_select.tscn")
 
 func scan_songs() -> void:
 	songs.clear()
@@ -1207,7 +1228,7 @@ func start_import(kind: String, source: String, extra: Dictionary = {}) -> void:
 		last_message = "Could not write import request. Check free disk space."
 		show_menu()
 		return
-	var request_data = {"kind": kind, "source": source, "library": song_root, "result": job_result}
+	var request_data = {"kind": kind, "source": source, "library": song_root, "result": job_result, "mode": mode_name()}
 	request_data.merge(extra, true)
 	f.store_string(JSON.stringify(request_data))
 	f.close()
@@ -2544,3 +2565,4 @@ func confirm_song_removal(item: Dictionary, action: String) -> void:
 	dialog.canceled.connect(dialog.queue_free)
 	add_child(dialog)
 	dialog.popup_centered()
+
