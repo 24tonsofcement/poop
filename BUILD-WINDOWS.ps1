@@ -87,7 +87,7 @@ New-Item -ItemType Directory -Force $ImporterOut | Out-Null
 Copy-Item (Join-Path $Build 'frozen\PulseImporter\*') $ImporterOut -Recurse -Force
 Copy-Item $ToolsDir (Join-Path $ImporterOut 'tools') -Recurse -Force
 Copy-Item $ModelDir (Join-Path $ImporterOut 'models') -Recurse -Force
-Copy-Item LICENSE,THIRD-PARTY.md,BUILD-STATUS.md $Release -Force
+Copy-Item LICENSE,THIRD-PARTY.md,BUILD-STATUS.md,LASER-MODE.md $Release -Force
 Copy-Item README.md (Join-Path $Release 'SOURCE-README.md') -Force
 Run $VenvPython @('-m','PyInstaller','--noconfirm','--onefile','--console','--name','PulseLobby','--distpath',$Release,'--workpath',(Join-Path $Build 'lobby-pyinstaller'),'--specpath',$Build,'server/lobby_server.py')
 Run $VenvPython @('scripts/run_online_smoke.py',$Godot,'--server-exe',(Join-Path $Release 'PulseLobby.exe'))

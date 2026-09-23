@@ -16,9 +16,43 @@ var filter_effect: AudioEffectLowPassFilter
 var effects_enabled: bool = true
 var tilt_enabled: bool = true
 var laser_key: String = ""
+var menu_motion: Array = [0.0, 0.0]
+var last_menu_move: int = 0
+
+func apply_theme() -> void:
+	theme = Theme.new()
+	theme.default_font = ThemeDB.fallback_font
+	theme.default_font_size = 18
+	for kind in ["Button", "OptionButton", "LineEdit"]:
+		for state in ["normal", "hover", "pressed", "focus"]:
+			var style = StyleBoxFlat.new()
+			style.bg_color = Color("101b2e") if state == "normal" else Color("24394c")
+			style.border_color = CYAN if state != "pressed" else PINK
+			style.set_border_width_all(1 if state == "normal" else 2)
+			style.corner_radius_top_left = 10
+			style.corner_radius_bottom_right = 10
+			style.content_margin_left = 14; style.content_margin_right = 14
+			style.content_margin_top = 12; style.content_margin_bottom = 12
+			theme.set_stylebox(state, kind, style)
+		theme.set_color("font_color", kind, WHITE)
+		theme.set_color("font_hover_color", kind, CYAN)
+
+func menu_ink(color: Color) -> Color:
+	return color
+
+func button_into(parent: Node, caption: String, callback: Callable) -> Button:
+	var button = super.button_into(parent, caption, callback)
+	button.resized.connect(func(): button.pivot_offset = button.size / 2)
+	button.mouse_entered.connect(func():
+		if not reduced_motion: create_tween().tween_property(button, "scale", Vector2(1.025, 1.025), .12))
+	button.mouse_exited.connect(func(): create_tween().tween_property(button, "scale", Vector2.ONE, .12))
+	return button
 
 func mode_name() -> String:
 	return "laser"
+
+func settings_path() -> String:
+	return "user://laser-preferences.json"
 
 func library_root() -> String:
 	return ProjectSettings.globalize_path("user://laser-songs")
@@ -50,6 +84,7 @@ func _ready() -> void:
 		distortion.post_gain = -6
 		AudioServer.add_bus_effect(fx_bus, distortion)
 	else: filter_effect = AudioServer.get_bus_effect(fx_bus, 0)
+	AudioServer.set_bus_send(fx_bus, music_visualizer.bus_name)
 	audio.bus = "LaserDriveFX"
 	Input.joy_connection_changed.connect(controller_connection)
 	show_menu()
@@ -146,8 +181,14 @@ func show_menu() -> void:
 		for difficulty in diffs: choice.add_item(str(difficulty))
 		choice.select(diffs.find(laser_difficulty))
 		row.add_child(choice)
+		var profile = LineEdit.new()
+		profile.text = profile_names[0]
+		profile.placeholder_text = "Player name"
+		profile.custom_minimum_size.x = 120
+		row.add_child(profile)
+		profile.text_changed.connect(func(value): profile_names[0] = clean_profile(value, 0); save_settings())
 		choice.item_selected.connect(func(index): laser_difficulty = str(diffs[index]); save_laser_settings(); show_menu())
-		laser_key = str(selected.id) + ":" + laser_difficulty + ":" + JSON.stringify(selected.laser_charts[laser_difficulty]).sha256_text()
+		laser_key = profile_names[0] + ":" + str(selected.id) + ":" + laser_difficulty + ":" + JSON.stringify(selected.laser_charts[laser_difficulty]).sha256_text()
 		label_into(root, "PERSONAL BEST   %08d    /    %s" % [int(best_scores.get(laser_key, 0)), profile_names[0]], 22, PINK)
 	label_into(root, "BT  D F J K     FX  C M     LASERS  mouse X/Y or Q W / O P     START Enter     PAUSE Esc", 16, WHITE)
 	status_label = label_into(root, last_message, 17, CYAN)
@@ -234,8 +275,10 @@ func controller_slider(parent: Node, title: String, minimum: float, maximum: flo
 func start_game() -> void:
 	if selected.is_empty() or not selected.has("laser_charts"): return
 	stop_preview()
+	laser_key = profile_names[0] + ":" + str(selected.id) + ":" + laser_difficulty + ":" + JSON.stringify(selected.laser_charts[laser_difficulty]).sha256_text()
 	laser_chart = selected.laser_charts[laser_difficulty]
 	var timing: Array = selected.get("timing", []) if selected.get("timing", []) is Array else []
+	if selected.get("timing", []) is Dictionary and not selected.timing.is_empty(): timing = selected.timing.values()[0].get(laser_difficulty, [])
 	engine.setup(laser_chart, timing)
 	audio.stop(); audio.stream_paused = false
 	audio.stream = load_song_audio()
@@ -265,6 +308,7 @@ func toggle_pause() -> void:
 
 func _input(event: InputEvent) -> void:
 	if not controls.focused: return
+	if screen == "menu" and get_viewport().gui_get_focus_owner() is LineEdit: return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
 		if controls.learning >= 0 or controls.learning_axis >= 0: controls.learning = -1; controls.learning_axis = -1; return
 		if screen == "laser_game": toggle_pause(); return
@@ -276,11 +320,26 @@ func _input(event: InputEvent) -> void:
 		if is_instance_valid(controller_label): controller_label.text = controls.feedback
 		return
 	for action in actions:
+		if screen == "menu" and action.has("knob"):
+			var side: int = int(action.knob)
+			menu_motion[side] += float(action.delta)
+			if absf(float(menu_motion[side])) >= .12 and Time.get_ticks_msec() - last_menu_move > 130:
+				var direction: int = 1 if float(menu_motion[side]) > 0 else -1
+				menu_motion[side] = 0.0; last_menu_move = Time.get_ticks_msec()
+				if side == 1: move_song(direction)
+				elif not selected.is_empty():
+					var diffs: Array = selected.laser_charts.keys()
+					laser_difficulty = str(diffs[posmod(diffs.find(laser_difficulty) + direction, diffs.size())])
+					save_laser_settings(); show_menu()
+			continue
 		if action.has("button"):
 			if int(action.button) == 6 and bool(action.down):
 				if screen == "menu": start_game()
-				elif laser_paused: toggle_pause()
-			elif screen == "laser_game" and not laser_paused: engine.press(int(action.button), bool(action.down), laser_clock - offset_ms / 1000.0)
+				else: toggle_pause()
+			elif screen == "laser_game" and not laser_paused:
+				var previous_hits: int = engine.critical + engine.near
+				engine.press(int(action.button), bool(action.down), laser_clock - offset_ms / 1000.0)
+				if engine.critical + engine.near > previous_hits: play_feedback(false)
 		elif screen == "laser_game" and not laser_paused: engine.turn(int(action.knob), float(action.delta), laser_clock - offset_ms / 1000.0)
 
 func _process(delta: float) -> void:
@@ -304,10 +363,12 @@ func _process(delta: float) -> void:
 	if engine.critical + engine.near > before: play_feedback(false)
 	elif engine.misses > missed: play_feedback(true)
 	update_fx(delta)
+	music_visualizer.sample(delta, visual_effects.audio_visualizer)
 	if playing and laser_clock > audio.stream.get_length() + .4: finish_laser()
 	queue_redraw()
 
 func disable_fx() -> void:
+	fx_bus = AudioServer.get_bus_index("LaserDriveFX")
 	if fx_bus < 0: return
 	for index in range(AudioServer.get_bus_effect_count(fx_bus)): AudioServer.set_bus_effect_enabled(fx_bus, index, false)
 
@@ -321,8 +382,11 @@ func update_fx(delta: float) -> void:
 				active = true; value = float(engine.positions[side])
 	AudioServer.set_bus_effect_enabled(fx_bus, 0, effects_enabled and active)
 	filter_effect.cutoff_hz = lerpf(filter_effect.cutoff_hz, 500 + pow(value, 2) * 18500, minf(1, delta * 20))
-	AudioServer.set_bus_effect_enabled(fx_bus, 1, effects_enabled and engine.held[4])
-	AudioServer.set_bus_effect_enabled(fx_bus, 2, effects_enabled and engine.held[5])
+	for side in range(2):
+		var engaged: bool = false
+		for note in engine.buttons:
+			if int(note.lane) == 4 + side and int(note.state) == 1 and laser_clock >= float(note.t) and laser_clock <= maxf(float(note.end), float(note.t) + .12): engaged = true; break
+		AudioServer.set_bus_effect_enabled(fx_bus, side + 1, effects_enabled and engaged and engine.held[side + 4])
 
 func finish_laser() -> void:
 	disable_fx()
@@ -353,6 +417,7 @@ func _notification(what: int) -> void:
 
 func _exit_tree() -> void:
 	disable_fx()
+	if fx_bus >= 0: AudioServer.remove_bus(fx_bus)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func point(lane: float, seconds: float) -> Vector2:
@@ -370,7 +435,10 @@ func note_quad(a: float, b: float, seconds: float, thickness: float, tint: Color
 	draw_colored_polygon(PackedVector2Array([p, q, q + Vector2(0, thickness), p + Vector2(0, thickness)]), tint)
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color("080d19"))
+	var backdrop := Color("080d19")
+	if screen == "laser_game" and ((is_instance_valid(background_video) and background_video.visible) or (is_instance_valid(background_image) and background_image.visible)):
+		backdrop.a = .25
+	draw_rect(Rect2(Vector2.ZERO, size), backdrop)
 	for index in range(14):
 		var x: float = fmod(index * 160 + ui_clock * 30, size.x + 250) - 125
 		draw_line(Vector2(x, 0), Vector2(x - 220, size.y), Color(.2, .5, .7, .10), 2)
@@ -423,6 +491,14 @@ func _draw() -> void:
 		var color: Color = CYAN if int(effect.points) > 0 else Color("ff334c")
 		draw_arc(point(location, 0), 10 + age * 120, 0, TAU, 32, Color(color, maxf(0, 1 - age * 2)), 3)
 	draw_set_transform(Vector2.ZERO)
+	if visual_effects.audio_visualizer:
+		for index in range(music_visualizer.levels.size()):
+			var value: float = music_visualizer.levels[index].x
+			draw_rect(Rect2(40, 200 + index * 14, 10 + value * 110, 7), Color(CYAN, .35 + value * .45))
+	for lane in range(6):
+		var x: float = size.x * .27 + lane * size.x * .075
+		var tint: Color = WHITE if lane < 4 else Color("ffb12f")
+		draw_rect(Rect2(x, size.y - 105, size.x * .065, 20), Color(tint, .8 if engine.held[lane] else .12))
 	text_at(Vector2(65, 78), "LASER DRIVE", 30, CYAN)
 	text_at(Vector2(65, 115), str(selected.get("title", "")), 19, WHITE, size.x - 360)
 	text_at(Vector2(size.x - 270, 75), "%08d" % engine.score(), 32, WHITE)

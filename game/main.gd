@@ -197,13 +197,16 @@ func menu_ink(color: Color) -> Color:
 		if color == COLORS[index]: return [GraphicSkin.BLUE, GraphicSkin.RED, GraphicSkin.OCHRE, GraphicSkin.GREEN][index]
 	return color
 
+func settings_path() -> String:
+	return "user://settings.json"
+
 func load_settings() -> void:
 	if FileAccess.file_exists("user://last-timing.json"):
 		var parser = JSON.new()
 		if parser.parse(FileAccess.get_file_as_string("user://last-timing.json")) == OK and parser.data is Array:
 			last_timing = parser.data
-	if FileAccess.file_exists("user://settings.json"):
-		var data = JSON.parse_string(FileAccess.get_file_as_string("user://settings.json"))
+	if FileAccess.file_exists(settings_path()):
+		var data = JSON.parse_string(FileAccess.get_file_as_string(settings_path()))
 		if data is Dictionary:
 			offset_ms = clampf(float(data.get("offset", 0)), -300, 300)
 			var old_travel: float = float(data.get("approach", 1.7))
@@ -266,7 +269,7 @@ func load_settings() -> void:
 	apply_audio_levels()
 
 func save_settings() -> void:
-	var f = FileAccess.open("user://settings.json", FileAccess.WRITE)
+	var f = FileAccess.open(settings_path(), FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({"last_card_import_dir": last_card_import_dir, "last_card_export_dir": last_card_export_dir, "fullscreen": fullscreen, "reduced_motion": reduced_motion, "hype_settings": hype_settings, "music_volume": music_volume, "preview_volume": preview_volume, "hit_volume": hit_volume, "miss_volume": miss_volume, "preview_paused": preview_paused, "visual_effects": visual_effects, "player_choices": preferred_choices, "offset": offset_ms, "scroll_speed": scroll_speed, "volume": volume, "bindings": bindings, "note_style": note_style, "profiles": profile_names, "video_opacity": video_opacity, "highway_opacity": highway_opacity, "players_count": offline_players if online.connected() else players_count}))
 
