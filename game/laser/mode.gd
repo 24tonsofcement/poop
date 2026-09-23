@@ -59,6 +59,7 @@ func library_root() -> String:
 
 func _ready() -> void:
 	super._ready()
+	if last_message == "Choose a song, invite a friend, and press Play.": last_message = "Choose a track, set your controls, and start playing."
 	players_count = 1
 	for id in Input.get_connected_joypads():
 		if controls.profile == Input.get_joy_name(id) + " / " + Input.get_joy_guid(id): controls.device = id
@@ -426,7 +427,7 @@ func point(lane: float, seconds: float) -> Vector2:
 	var lookahead: float = clampf(1100.0 / maxf(scroll_speed, 100), .35, 6)
 	var depth: float = clampf(1.0 - seconds / lookahead, 0, 1.18)
 	var y: float = lerpf(top, hit, pow(depth, 1.5))
-	var width: float = lerpf(size.x * .12, size.x * .53, depth)
+	var width: float = lerpf(size.x * .12, size.x * .53, pow(depth, 1.5))
 	return Vector2(size.x / 2 + (lane - .5) * width, y)
 
 func note_quad(a: float, b: float, seconds: float, thickness: float, tint: Color) -> void:
@@ -476,8 +477,13 @@ func _draw() -> void:
 				var a: Dictionary = points[index - 1]
 				var b: Dictionary = points[index]
 				if float(b.t) < at or float(a.t) > at + ahead: continue
-				var p: Vector2 = point(float(a.x), maxf(0, float(a.t) - at))
-				var q: Vector2 = point(float(b.x), float(b.t) - at)
+				var start_t: float = maxf(at, float(a.t))
+				var end_t: float = minf(at + ahead, float(b.t))
+				var span: float = float(b.t) - float(a.t)
+				var start_x: float = lerpf(float(a.x), float(b.x), (start_t - float(a.t)) / span) if span > 0 else float(a.x)
+				var end_x: float = lerpf(float(a.x), float(b.x), (end_t - float(a.t)) / span) if span > 0 else float(b.x)
+				var p: Vector2 = point(start_x, start_t - at)
+				var q: Vector2 = point(end_x, end_t - at)
 				draw_line(p, q, Color(tint, .18), 24, true)
 				draw_line(p, q, tint, 9, true)
 				draw_line(p, q, Color.WHITE, 2, true)
