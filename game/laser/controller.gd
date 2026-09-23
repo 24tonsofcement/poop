@@ -1,7 +1,8 @@
 extends RefCounted
 var config: ConfigFile = ConfigFile.new()
 var profile: String = "Keyboard / mouse"
-var keys: Array = [KEY_D, KEY_F, KEY_J, KEY_K, KEY_C, KEY_M, KEY_ENTER]
+const DEFAULT_KEYS = [KEY_D, KEY_F, KEY_J, KEY_K, KEY_C, KEY_M, KEY_ENTER, KEY_Q, KEY_W, KEY_O, KEY_P, KEY_BACKSPACE]
+var keys: Array = DEFAULT_KEYS.duplicate()
 var joy_buttons: Array = [0, 1, 2, 3, 4, 5, 8]
 var axes: Array = [0, 1]
 var inverted: Array = [false, false]
@@ -23,7 +24,8 @@ func _init() -> void:
 
 func load_profile(name: String) -> void:
 	profile = name
-	keys = config.get_value(name, "keys", [KEY_D, KEY_F, KEY_J, KEY_K, KEY_C, KEY_M, KEY_ENTER])
+	keys = config.get_value(name, "keys", DEFAULT_KEYS.duplicate())
+	while keys.size() < DEFAULT_KEYS.size(): keys.append(DEFAULT_KEYS[keys.size()])
 	joy_buttons = config.get_value(name, "buttons", [0, 1, 2, 3, 4, 5, 8])
 	axes = config.get_value(name, "axes", [0, 1])
 	inverted = config.get_value(name, "inverted", [false, false])
@@ -58,12 +60,12 @@ func event_actions(event: InputEvent) -> Array:
 	if event is InputEventKey and not event.echo:
 		feedback = "KEY " + OS.get_keycode_string(event.physical_keycode)
 		if learning >= 0 and event.pressed:
-			keys[learning] = event.physical_keycode; learning = -1; save(); return output
-		for lane in range(7):
+			assign_key(learning, event.physical_keycode); learning = -1; save(); return output
+		for lane in [0, 1, 2, 3, 4, 5, 6, 11]:
 			if event.physical_keycode == int(keys[lane]): output.append({"button": lane, "down": event.pressed})
 	elif event is InputEventJoypadButton:
 		feedback = "BUTTON %d · %s" % [event.button_index, "ON" if event.pressed else "OFF"]
-		if learning >= 0 and event.pressed:
+		if learning >= 0 and learning < 7 and event.pressed:
 			joy_buttons[learning] = event.button_index; learning = -1; save(); return output
 		if source == 1:
 			for lane in range(7):
@@ -85,8 +87,20 @@ func event_actions(event: InputEvent) -> Array:
 func continuous(delta: float) -> Array:
 	if not focused: return [0.0, 0.0]
 	var result: Array = [0.0, 0.0]
-	var keyboard: Array = [[KEY_Q, KEY_W], [KEY_O, KEY_P]]
+	var keyboard: Array = [[keys[7], keys[8]], [keys[9], keys[10]]]
 	for side in range(2):
 		result[side] = (float(Input.is_physical_key_pressed(keyboard[side][1])) - float(Input.is_physical_key_pressed(keyboard[side][0]))) * delta * sensitivity * 1.8
 		if source == 1 and axis_mode == 2: result[side] += float(rates[side]) * delta * sensitivity * (-1.0 if inverted[side] else 1.0)
 	return result
+
+func assign_key(action: int, code: int) -> void:
+	var other: int = keys.find(code)
+	if other >= 0 and other != action: keys[other] = keys[action]
+	keys[action] = code
+	feedback = "Bound " + OS.get_keycode_string(code) + (" (previous binding swapped)" if other >= 0 and other != action else "")
+
+func reset_bindings() -> void:
+	keys = DEFAULT_KEYS.duplicate()
+	joy_buttons = [0, 1, 2, 3, 4, 5, 8]
+	learning = -1; learning_axis = -1
+	save()

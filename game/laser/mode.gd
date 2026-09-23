@@ -18,6 +18,14 @@ var tilt_enabled: bool = true
 var laser_key: String = ""
 var menu_motion: Array = [0.0, 0.0]
 var last_menu_move: int = 0
+var highway_width: float = .53
+var horizon_height: float = .15
+var receptor_height: float = .84
+var note_thickness: float = 9.0
+var laser_thickness: float = 9.0
+var laser_glow: bool = true
+var hit_effects: bool = true
+var judgement_text: bool = true
 
 func apply_theme() -> void:
 	theme = Theme.new()
@@ -71,6 +79,8 @@ func _ready() -> void:
 		laser_difficulty = str(settings.get_value("play", "difficulty", "Normal"))
 		effects_enabled = bool(settings.get_value("play", "effects", true))
 		tilt_enabled = bool(settings.get_value("play", "tilt", true))
+		for property in ["highway_width", "horizon_height", "receptor_height", "note_thickness", "laser_thickness", "laser_glow", "hit_effects", "judgement_text"]:
+			set(property, settings.get_value("stage", property, get(property)))
 	fx_bus = AudioServer.get_bus_index("LaserDriveFX")
 	if fx_bus < 0:
 		AudioServer.add_bus()
@@ -102,6 +112,8 @@ func save_laser_settings() -> void:
 	settings.set_value("play", "difficulty", laser_difficulty)
 	settings.set_value("play", "effects", effects_enabled)
 	settings.set_value("play", "tilt", tilt_enabled)
+	for property in ["highway_width", "horizon_height", "receptor_height", "note_thickness", "laser_thickness", "laser_glow", "hit_effects", "judgement_text"]:
+		settings.set_value("stage", property, get(property))
 	settings.save("user://laser-settings.cfg")
 
 func scan_songs() -> void:
@@ -192,7 +204,7 @@ func show_menu() -> void:
 		choice.item_selected.connect(func(index): laser_difficulty = str(diffs[index]); save_laser_settings(); show_menu())
 		laser_key = profile_names[0] + ":" + str(selected.id) + ":" + laser_difficulty + ":" + JSON.stringify(selected.laser_charts[laser_difficulty]).sha256_text()
 		label_into(root, "PERSONAL BEST   %08d    /    %s" % [int(best_scores.get(laser_key, 0)), profile_names[0]], 22, PINK)
-	label_into(root, "BT  D F J K     FX  C M     LASERS  mouse X/Y or Q W / O P     START Enter     PAUSE Esc", 16, WHITE)
+	label_into(root, "Configure every key and knob in CONTROLLERS. Esc always pauses / goes back.", 16, WHITE)
 	status_label = label_into(root, last_message, 17, CYAN)
 	request_preview()
 	queue_redraw()
@@ -236,9 +248,10 @@ func show_controllers() -> void:
 	root.add_child(source)
 	source.item_selected.connect(func(index): controls.source = index; controls.previous.clear(); controls.save())
 	var row = box_into(root, true)
-	for lane in range(7):
-		var label: String = ["BT-A", "BT-B", "BT-C", "BT-D", "FX-L", "FX-R", "START"][lane]
-		button_into(row, label + "\n" + OS.get_keycode_string(int(controls.keys[lane])) + " / J" + str(controls.joy_buttons[lane]), func(): controls.learning = lane; controls.learning_axis = -1; controls.feedback = "Press the new key or controller button for " + label)
+	for lane in range(12):
+		if lane == 6: row = box_into(root, true)
+		var label: String = ["BT-A", "BT-B", "BT-C", "BT-D", "FX-L", "FX-R", "START", "L ◀", "L ▶", "R ◀", "R ▶", "PAUSE"][lane]
+		button_into(row, label + "\n" + OS.get_keycode_string(int(controls.keys[lane])) + (" / J" + str(controls.joy_buttons[lane]) if lane < 7 else ""), func(): controls.learning = lane; controls.learning_axis = -1; controls.feedback = "Press a key" + (" or controller button" if lane < 7 else "") + " for " + label; controller_label.text = controls.feedback)
 	var knobs = box_into(root, true)
 	for side in range(2):
 		button_into(knobs, "Learn " + ("LEFT" if side == 0 else "RIGHT") + " axis (currently %d)" % controls.axes[side], func(): controls.learning_axis = side; controls.learning = -1)
@@ -264,7 +277,9 @@ func show_controllers() -> void:
 			save_laser_settings())
 	controller_label = label_into(root, controls.feedback, 20, CYAN)
 	label_into(root, "Use the controller's keyboard/mouse or joystick firmware mode. Mouse X = left knob, Y = right knob.\nCustom USB protocols and cabinet lighting are not supported. Press Esc to cancel binding.", 16)
-	button_into(root, "BACK TO TRACKS", func(): controls.learning = -1; controls.learning_axis = -1; show_menu())
+	button_into(root, "RESET KEY / BUTTON BINDINGS", func(): controls.reset_bindings(); show_controllers())
+	label_into(root, "Esc is reserved for cancel / back. Duplicate key assignments swap the previous binding.", 16)
+	button_into(root, "BACK TO SETTINGS", func(): controls.learning = -1; controls.learning_axis = -1; show_settings())
 
 func controller_slider(parent: Node, title: String, minimum: float, maximum: float, value: float, callback: Callable) -> void:
 	var caption = label_into(parent, title + "  %.3f" % value, 17)
@@ -317,8 +332,11 @@ func _input(event: InputEvent) -> void:
 		if screen != "menu": show_menu(); return
 	if screen not in ["laser_game", "controllers", "menu"]:
 		super._input(event); return
+	var was_learning: bool = controls.learning >= 0 or controls.learning_axis >= 0
 	var actions: Array = controls.event_actions(event)
 	if screen == "controllers":
+		if was_learning: get_viewport().set_input_as_handled()
+		if was_learning and controls.learning < 0 and controls.learning_axis < 0: show_controllers()
 		if is_instance_valid(controller_label): controller_label.text = controls.feedback
 		return
 	for action in actions:
@@ -336,7 +354,9 @@ func _input(event: InputEvent) -> void:
 					save_laser_settings(); show_menu()
 			continue
 		if action.has("button"):
-			if int(action.button) == 6 and bool(action.down):
+			if int(action.button) == 11:
+				if bool(action.down) and screen == "laser_game": toggle_pause()
+			elif int(action.button) == 6 and bool(action.down):
 				if screen == "menu": start_game()
 				else: toggle_pause()
 			elif screen == "laser_game" and not laser_paused:
@@ -348,7 +368,7 @@ func _input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if screen != "laser_game": super._process(delta); return
 	if laser_paused: return
-	ui_clock += delta
+	if not reduced_motion: ui_clock += delta
 	if not playing:
 		laser_clock += delta
 		if laser_clock >= 0:
@@ -424,12 +444,12 @@ func _exit_tree() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func point(lane: float, seconds: float) -> Vector2:
-	var hit: float = size.y - 130
-	var top: float = 120
-	var lookahead: float = clampf(1100.0 / maxf(scroll_speed, 100), .35, 6)
+	var hit: float = size.y * receptor_height
+	var top: float = size.y * horizon_height
+	var lookahead: float = 1100.0 / maxf(scroll_speed, .001)
 	var depth: float = clampf(1.0 - seconds / lookahead, 0, 1.18)
 	var y: float = lerpf(top, hit, pow(depth, 1.5))
-	var width: float = lerpf(size.x * .12, size.x * .53, pow(depth, 1.5))
+	var width: float = lerpf(size.x * .12, size.x * highway_width, pow(depth, 1.5))
 	return Vector2(size.x / 2 + (lane - .5) * width, y)
 
 func note_quad(a: float, b: float, seconds: float, thickness: float, tint: Color) -> void:
@@ -449,16 +469,16 @@ func _draw() -> void:
 		draw_arc(size / 2, size.y * .42, ui_clock * .1, ui_clock * .1 + 4.8, 90, Color(.8, .2, .6, .18), 3)
 		return
 	var angle: float = 0.0
-	if tilt_enabled: angle = (float(engine.positions[0]) + float(engine.positions[1]) - 1) * .035
+	if tilt_enabled and not reduced_motion: angle = (float(engine.positions[0]) + float(engine.positions[1]) - 1) * .035
 	draw_set_transform(size / 2, angle, Vector2.ONE)
 	draw_set_transform_matrix(Transform2D(angle, size / 2 - Vector2(size / 2).rotated(angle)))
-	var road = PackedVector2Array([point(0, 10), point(1, 10), point(1, -.3), point(0, -.3)])
+	var road = PackedVector2Array([point(0, 1100.0 / maxf(scroll_speed, .001)), point(1, 1100.0 / maxf(scroll_speed, .001)), point(1, -.3), point(0, -.3)])
 	draw_colored_polygon(road, Color(.06, .08, .14, highway_opacity))
-	for lane in range(5): draw_line(point(lane / 4.0, 10), point(lane / 4.0, -.3), Color(.5, .7, .9, .25), 2)
+	for lane in range(5): draw_line(point(lane / 4.0, 1100.0 / maxf(scroll_speed, .001)), point(lane / 4.0, -.3), Color(.5, .7, .9, .25), 2)
 	for side in range(2):
-		draw_line(point(float(side), 10), point(float(side), -.3), CYAN if side == 0 else PINK, 4)
+		draw_line(point(float(side), 1100.0 / maxf(scroll_speed, .001)), point(float(side), -.3), CYAN if side == 0 else PINK, 4)
 	var at: float = laser_clock - offset_ms / 1000.0
-	var ahead: float = clampf(1100.0 / maxf(scroll_speed, 100), .35, 6)
+	var ahead: float = 1100.0 / maxf(scroll_speed, .001)
 	for note in engine.buttons:
 		if float(note.end) < at - .15: continue
 		if float(note.t) > at + ahead: break
@@ -470,7 +490,7 @@ func _draw() -> void:
 			var upper: float = float(note.end) - at
 			var lower: float = maxf(0, float(note.t) - at)
 			draw_colored_polygon(PackedVector2Array([point(a, upper), point(b, upper), point(b, lower), point(a, lower)]), Color(tint, .5))
-		if int(note.state) == 0: note_quad(a, b, float(note.t) - at, 9, tint)
+		if int(note.state) == 0: note_quad(a, b, float(note.t) - at, note_thickness, tint)
 	for side in range(2):
 		var tint: Color = CYAN if side == 0 else PINK
 		for path in engine.paths[side]:
@@ -486,13 +506,13 @@ func _draw() -> void:
 				var end_x: float = lerpf(float(a.x), float(b.x), (end_t - float(a.t)) / span) if span > 0 else float(b.x)
 				var p: Vector2 = point(start_x, start_t - at)
 				var q: Vector2 = point(end_x, end_t - at)
-				draw_line(p, q, Color(tint, .18), 24, true)
-				draw_line(p, q, tint, 9, true)
+				if laser_glow: draw_line(p, q, Color(tint, .18), laser_thickness * 2.7, true)
+				draw_line(p, q, tint, laser_thickness, true)
 				draw_line(p, q, Color.WHITE, 2, true)
 		var cursor: Vector2 = point(float(engine.positions[side]), 0)
 		draw_colored_polygon(PackedVector2Array([cursor + Vector2(-13, 20), cursor + Vector2(0, -4), cursor + Vector2(13, 20)]), tint)
 	draw_line(point(0, 0), point(1, 0), Color.WHITE, 4)
-	for effect in engine.effects:
+	for effect in engine.effects if hit_effects else []:
 		var age: float = at - float(effect.t)
 		var lane: int = int(effect.lane)
 		var location: float = (lane + .5) / 4.0 if lane < 4 else (lane - 4 + .5) / 2.0 if lane < 6 else float(engine.positions[lane - 6])
@@ -512,10 +532,65 @@ func _draw() -> void:
 	text_at(Vector2(size.x - 270, 75), "%08d" % engine.score(), 32, WHITE)
 	text_at(Vector2(size.x - 270, 111), laser_difficulty.to_upper(), 18, PINK)
 	text_at(Vector2(size.x * .5 - 75, size.y - 66), "%04d CHAIN" % engine.combo, 28, WHITE)
-	text_at(Vector2(size.x * .5 - 70, size.y - 35), engine.message, 19, CYAN)
+	if judgement_text: text_at(Vector2(size.x * .5 - 70, size.y - 35), engine.message, 19, CYAN)
 	var meter = Rect2(size.x - 90, 170, 26, size.y - 350)
 	draw_rect(meter, Color("192538"))
 	draw_rect(Rect2(meter.position + Vector2(0, meter.size.y * (1 - engine.gauge)), Vector2(meter.size.x, meter.size.y * engine.gauge)), PINK if engine.gauge >= .7 else CYAN)
 	draw_line(meter.position + Vector2(-8, meter.size.y * .3), meter.position + Vector2(34, meter.size.y * .3), Color.WHITE, 2)
 	text_at(Vector2(size.x - 110, size.y - 140), "%d%%" % (engine.gauge * 100), 18)
 	if laser_clock < 0: text_at(Vector2(size.x / 2 - 110, size.y / 2), "READY  %d" % ceili(-laser_clock), 40, PINK)
+
+func show_settings() -> void:
+	stop_preview()
+	screen = "laser_settings"
+	var root = page("LASER DRIVE   /   SETTINGS")
+	button_into(root, "BACK TO TRACKS", show_menu)
+	var tabs = TabContainer.new()
+	tabs.name = "LaserSettings"
+	tabs.custom_minimum_size.y = 520
+	root.add_child(tabs)
+	var input_page = settings_page(tabs, "Input", "YOUR CONTROLS", "Bindings and timing are saved separately from Arcade.")
+	button_into(input_page, "KEYBOARD / CONTROLLER BINDINGS", show_controllers)
+	label_into(input_page, "Remap BT, FX, Start, Pause and all four keyboard laser directions.\nController profiles include axis mode, sensitivity, inversion and jitter threshold.", 18)
+	label_into(input_page, "Input timing offset (ms)", 18)
+	var offset = SpinBox.new()
+	offset.name = "LaserTimingOffset"
+	offset.min_value = -1000; offset.max_value = 1000; offset.step = 1; offset.value = offset_ms
+	input_page.add_child(offset)
+	offset.value_changed.connect(func(value): offset_ms = value; save_settings())
+	label_into(input_page, "Positive offset delays the chart's judgment time relative to the audio.", 16)
+	var highway = settings_page(tabs, "Highway", "READ THE TRACK", "Adjust presentation without changing chart timing or scoring.")
+	label_into(highway, "Note speed — any positive value, no upper limit", 18)
+	var speed = LineEdit.new()
+	speed.name = "NoteSpeed"
+	speed.text = str(scroll_speed)
+	highway.add_child(speed)
+	speed.text_submitted.connect(func(_value): apply_note_speed(speed))
+	speed.focus_exited.connect(func(): apply_note_speed(speed))
+	controller_slider(highway, "Highway width (screen fraction)", .30, .75, highway_width, func(value): highway_width = value; save_laser_settings())
+	controller_slider(highway, "Horizon height (from top)", .03, .35, horizon_height, func(value): horizon_height = value; save_laser_settings())
+	controller_slider(highway, "Hit line height (from top)", .65, .90, receptor_height, func(value): receptor_height = value; save_laser_settings())
+	controller_slider(highway, "Note thickness (pixels)", 3, 30, note_thickness, func(value): note_thickness = value; save_laser_settings())
+	controller_slider(highway, "Laser thickness (pixels)", 3, 24, laser_thickness, func(value): laser_thickness = value; save_laser_settings())
+	controller_slider(highway, "Highway opacity", 0, 1, highway_opacity, func(value): highway_opacity = value; save_settings())
+	var sound = settings_page(tabs, "Audio", "MIX AND FEEDBACK", "Set hit / miss volume to zero to mute feedback.")
+	for item in [["Master volume", "volume"], ["Song volume", "music_volume"], ["Preview volume", "preview_volume"], ["Hit sounds", "hit_volume"], ["Miss sounds", "miss_volume"]]:
+		add_audio_slider(sound, str(item[0]), str(item[1]))
+	button_into(sound, "TEST HIT SOUND", func(): play_feedback(false))
+	button_into(sound, "TEST MISS SOUND", func(): play_feedback(true))
+	var display = settings_page(tabs, "Display & FX", "YOUR STAGE", "Only effects used by Laser Drive are shown here.")
+	var full = CheckButton.new()
+	full.text = "Fullscreen"; full.button_pressed = fullscreen
+	display.add_child(full)
+	full.toggled.connect(set_fullscreen)
+	controller_slider(display, "Background video dimming", 0, 1, 1 - video_opacity, func(value): video_opacity = 1 - value; save_settings())
+	for item in [["Music filters / FX", "effects_enabled"], ["Highway tilt", "tilt_enabled"], ["Laser glow", "laser_glow"], ["Hit / miss rings", "hit_effects"], ["Judgment text", "judgement_text"], ["Reduced motion", "reduced_motion"]]:
+		var toggle = CheckButton.new()
+		toggle.text = item[0]; toggle.button_pressed = bool(get(item[1]))
+		display.add_child(toggle)
+		toggle.toggled.connect(func(value): set(item[1], value); ui_motion.reduced = reduced_motion; save_laser_settings(); save_settings())
+	add_effect_toggle(display, "Song spectrum visualizer", "audio_visualizer")
+	var storage = settings_page(tabs, "Storage", "LASER LIBRARY", "Manage songs imported for this mode.")
+	button_into(storage, "SONG MANAGER", func(): show_song_manager(true))
+	button_into(storage, "IMPORT / EXPORT SONG CARDS", show_laser_import)
+	status_label = label_into(root, "Changes are saved automatically for Laser Drive.", 16, CYAN)

@@ -24,6 +24,22 @@ func run() -> void:
 	controls.focused = false
 	var input = InputEventKey.new(); input.physical_keycode = KEY_D; input.pressed = true
 	check(controls.event_actions(input).is_empty(), "Unfocused controller is ignored")
+	controls.focused = true
+	controls.load_profile("smoke-custom-keys")
+	controls.keys = controls.DEFAULT_KEYS.duplicate()
+	controls.assign_key(7, KEY_Z)
+	controls.assign_key(0, KEY_F)
+	check(controls.keys[0] == KEY_F and controls.keys[1] == KEY_D, "Duplicate bindings swap instead of hitting two lanes")
+	controls.save()
+	var reloaded = load("res://game/laser/controller.gd").new()
+	check(reloaded.keys[7] == KEY_Z and reloaded.keys[0] == KEY_F, "Custom directions and buttons survive reload")
+	var bound = InputEventKey.new(); bound.physical_keycode = KEY_F; bound.pressed = true
+	var actions: Array = reloaded.event_actions(bound)
+	check(actions.size() == 1 and actions[0].button == 0, "Remapped note key emits exactly one lane action")
+	reloaded.assign_key(11, KEY_B)
+	bound.physical_keycode = KEY_B
+	check(reloaded.event_actions(bound)[0].button == 11, "Pause has its own remappable action")
+	controls.load_profile("Keyboard / mouse"); controls.save()
 	var game = load("res://game/laser/mode.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
@@ -38,6 +54,20 @@ func run() -> void:
 	game.show_controllers()
 	await process_frame
 	check(game.screen == "controllers", "Controller configuration renders")
+	game.show_settings()
+	await process_frame
+	check(game.ui.find_child("LaserSettings", true, false).get_tab_count() == 5, "Dedicated Laser settings categories")
+	var speed = game.ui.find_child("NoteSpeed", true, false)
+	speed.text = "20000"
+	game.apply_note_speed(speed)
+	check(game.scroll_speed == 20000, "Highway speed accepts values above old cap")
+	var fast: Vector2 = game.point(.5, .02)
+	game.scroll_speed = 4000
+	check(game.point(.5, .02).y > fast.y, "High speed changes actual travel, not only saved label")
+	game.scroll_speed = 750; game.save_settings()
+	game.highway_width = .65; game.note_thickness = 15; game.save_laser_settings()
+	var cfg = ConfigFile.new(); cfg.load("user://laser-settings.cfg")
+	check(cfg.get_value("stage", "highway_width") == .65 and cfg.get_value("stage", "note_thickness") == 15, "Stage settings persist")
 	game.show_menu()
 	await process_frame
 	game.queue_free()

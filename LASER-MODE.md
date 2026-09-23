@@ -45,3 +45,17 @@ No universal compatibility claim is made for arbitrary DIY firmware.
 
 All visual assets and animations are original. This is an independent arcade-
 inspired mode, not a Konami product; it includes no Sound Voltex assets or music.
+
+## Customization
+
+Settings now has Input, Highway, Audio, Display & FX, and Storage tabs.
+Remap all six note keys, Start, Pause, and the four keyboard laser directions
+in Controllers. Escape remains a fixed back/pause/cancel shortcut. Assigning
+a key already in use swaps its old action to avoid accidental double hits.
+Bindings persist per controller profile, including profiles from older versions.
+
+Highway settings include uncapped positive note speed, width, horizon and hit-line
+position, note and laser thickness, and opacity. Display & FX controls fullscreen,
+video dimming, tilt, laser glow, hit rings, judgment text and reduced motion.
+Audio has separate master, song, preview, hit and miss volumes. All preferences
+are saved for Laser Drive separately from Arcade.

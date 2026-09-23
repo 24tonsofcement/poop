@@ -19,4 +19,8 @@ func capture() -> void:
 	await create_timer(.7).timeout
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("/tmp/laser-controller.png")
+	game.show_settings()
+	await create_timer(.5).timeout
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("/tmp/laser-settings.png")
 	quit()
