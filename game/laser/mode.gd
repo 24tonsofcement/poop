@@ -153,7 +153,8 @@ func show_menu() -> void:
 	button_into(top, "IMPORT / LIBRARY", show_laser_import)
 	button_into(top, "CONTROLLERS", show_controllers)
 	button_into(top, "SETTINGS", show_settings)
-	button_into(top, "PAUSE PREVIEW" if not preview_paused else "RESUME PREVIEW", toggle_preview)
+	var preview_button = button_into(top, "PAUSE PREVIEW" if not preview_paused else "RESUME PREVIEW", toggle_preview)
+	preview_button.name = "PreviewToggle"
 	var search = LineEdit.new()
 	search.placeholder_text = "Search laser tracks"
 	search.text = song_search
@@ -322,6 +323,7 @@ func _input(event: InputEvent) -> void:
 		return
 	for action in actions:
 		if screen == "menu" and action.has("knob"):
+			if event is InputEventMouseMotion and not Input.is_physical_key_pressed(KEY_SHIFT): continue
 			var side: int = int(action.knob)
 			menu_motion[side] += float(action.delta)
 			if absf(float(menu_motion[side])) >= .12 and Time.get_ticks_msec() - last_menu_move > 130:

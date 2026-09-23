@@ -33,7 +33,8 @@ Select wrapping encoder mode for axes that jump from maximum back to minimum;
 non-wrapping mode for finite analog axes; rate mode for spring-centered sticks.
 Tune inversion, sensitivity and jitter threshold while watching the live input
 readout. Controller Start pauses. In Track Select, right knob changes the song
-and left knob changes difficulty. Reconnect a selected device through this menu
+and left knob changes difficulty. For mouse-emulating knobs, hold Shift in menus
+to enable knob navigation, so ordinary mouse movement can still reach buttons. Reconnect a selected device through this menu
 if Windows enumerates it with a new device ID.
 
 This supports the standard keyboard, mouse and joystick events Windows/Godot
